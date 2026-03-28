@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.secondary {
+            background-color: #6c757d;
+        }
+        button.secondary:hover {
+            background-color: #545b62;
+        }
+        #result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 2px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 2px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 2px solid #bee5eb;
+            color: #0c5460;
+        }
+        .endpoint {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 API 登录测试工具</h1>
+        
+        <div class="endpoint">
+            <strong>测试端点：</strong> /api/auth/login<br>
+            <strong>代理目标：</strong> http://localhost:3000/api/auth/login
+        </div>
+        
+        <div class="form-group">
+            <label>用户名：</label>
+            <input type="text" id="username" value="2023b46037" placeholder="请输入用户名">
+        </div>
+        
+        <div class="form-group">
+            <label>密码：</label>
+            <input type="password" id="password" value="123456" placeholder="请输入密码">
+        </div>
+        
+        <div class="button-group">
+            <button onclick="testLogin()">🔐 测试登录</button>
+            <button onclick="testDirect()" class="secondary">🎯 直接请求后端</button>
+            <button onclick="clearResult()" class="secondary">🗑️ 清除结果</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const resultDiv = document.getElementById('result');
+        
+        function showResult(message, type = 'info') {
+            resultDiv.textContent = message;
+            resultDiv.className = type;
+            resultDiv.style.display = 'block';
+        }
+        
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            showResult('正在测试登录（通过 Vite 代理）...', 'info');
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                const result = `
+状态码: ${response.status} ${response.statusText}
+请求 URL: ${response.url}
+
+响应数据:
+${JSON.stringify(data, null, 2)}
+
+响应头:
+${Array.from(response.headers.entries()).map(([k, v]) => `${k}: ${v}`).join('\n')}
+                `.trim();
+                
+                if (data.success) {
+                    showResult('✅ 登录成功！\n\n' + result, 'success');
+                } else {
+                    showResult('❌ 登录失败\n\n' + result, 'error');
+                }
+            } catch (error) {
+                showResult('❌ 请求失败：\n\n' + error.message + '\n\n' + error.stack, 'error');
+            }
+        }
+        
+        async function testDirect() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            showResult('正在测试登录（直接请求后端）...', 'info');
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                const result = `
+状态码: ${response.status} ${response.statusText}
+请求 URL: ${response.url}
+
+响应数据:
+${JSON.stringify(data, null, 2)}
+
+响应头:
+${Array.from(response.headers.entries()).map(([k, v]) => `${k}: ${v}`).join('\n')}
+                `.trim();
+                
+                if (data.success) {
+                    showResult('✅ 登录成功！\n\n' + result, 'success');
+                } else {
+                    showResult('❌ 登录失败\n\n' + result, 'error');
+                }
+            } catch (error) {
+                showResult('❌ 请求失败：\n\n' + error.message + '\n\n可能是 CORS 问题', 'error');
+            }
+        }
+        
+        function clearResult() {
+            resultDiv.textContent = '';
+            resultDiv.style.display = 'none';
+        }
+        
+        // 页面加载时显示提示
+        window.addEventListener('load', () => {
+            showResult('准备就绪！请输入用户名和密码，然后点击"测试登录"按钮。\n\n默认账号：2023b46037\n默认密码：123456', 'info');
+        });
+    </script>
+</body>
+</html>

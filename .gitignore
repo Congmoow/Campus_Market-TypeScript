@@ -1,0 +1,298 @@
+# ==========================================
+# Campus Market - Git Ignore Configuration
+# ==========================================
+
+# ==========================================
+# Dependencies
+# ==========================================
+node_modules/
+/.pnp
+.pnp.js
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# ==========================================
+# Build Output
+# ==========================================
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+.vite/
+
+# Frontend specific
+frontend/dist/
+frontend/build/
+
+# Backend specific
+backend/dist/
+backend/build/
+
+# ==========================================
+# Environment Variables
+# ==========================================
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.*.local
+
+# Backend environment
+backend/.env
+backend/.env.local
+backend/.env.development
+backend/.env.production
+
+# Frontend environment
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+
+# ==========================================
+# Logs
+# ==========================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime logs
+*.log.*
+combined.log
+error.log
+access.log
+
+# ==========================================
+# Testing & Coverage
+# ==========================================
+coverage/
+.nyc_output/
+*.lcov
+.coverage
+htmlcov/
+.pytest_cache/
+.vitest/
+
+# Test results
+test-results/
+junit.xml
+
+# ==========================================
+# IDE & Editors
+# ==========================================
+# VSCode
+.vscode/
+.vscode-test/
+*.code-workspace
+
+# JetBrains IDEs (WebStorm, IntelliJ, etc.)
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ==========================================
+# Operating System Files
+# ==========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ==========================================
+# Database
+# ==========================================
+# SQLite
+*.sqlite
+*.sqlite3
+*.db
+
+# PostgreSQL
+*.dump
+*.sql.gz
+
+# Prisma
+prisma/dev.db
+prisma/dev.db-journal
+
+# ==========================================
+# Uploads & Media
+# ==========================================
+uploads/
+backend/uploads/
+frontend/public/uploads/
+
+# Temporary upload files
+*.tmp
+*.temp
+
+# ==========================================
+# TypeScript
+# ==========================================
+*.tsbuildinfo
+.tsbuildinfo
+
+# ==========================================
+# Package Manager
+# ==========================================
+# npm
+npm-debug.log*
+
+# yarn
+yarn.lock
+yarn-debug.log*
+yarn-error.log*
+.yarn-integrity
+
+# pnpm
+pnpm-lock.yaml
+pnpm-debug.log*
+
+# ==========================================
+# Miscellaneous
+# ==========================================
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+nul
+
+# Local AI/IDE artifacts
+.codex-artifacts/
+.kiro/
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Lock files (keep only one package manager)
+# Uncomment the ones you DON'T use:
+# package-lock.json  # npm
+# yarn.lock          # yarn
+# pnpm-lock.yaml     # pnpm
+
+# ==========================================
+# Security & Secrets
+# ==========================================
+# Private keys
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Secrets
+secrets/
+.secrets/
+*.secret
+
+# ==========================================
+# Docker
+# ==========================================
+.dockerignore
+docker-compose.override.yml
+
+# ==========================================
+# CI/CD
+# ==========================================
+.github/workflows/*.local.yml
+
+# ==========================================
+# Project Specific
+# ==========================================
+# Prisma migrations (uncomment if you want to ignore)
+# backend/prisma/migrations/
+
+# Generated files
+backend/src/generated/
+frontend/src/generated/
+
+# Documentation builds
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# ==========================================
+# Keep These Files
+# ==========================================
+# Force include important files
+!.gitkeep
+!.env.example
+!backend/.env.example
+!frontend/.env.example

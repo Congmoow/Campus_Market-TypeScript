@@ -1,0 +1,140 @@
+# ==========================================
+# Campus Market - Git Attributes
+# ==========================================
+
+# ==========================================
+# Auto detect text files and normalize line endings
+# ==========================================
+* text=auto eol=lf
+
+# ==========================================
+# Source Code
+# ==========================================
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.html text eol=lf
+*.xml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# ==========================================
+# Configuration Files
+# ==========================================
+*.config.js text eol=lf
+*.config.ts text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
+.prettierrc text eol=lf
+.eslintrc text eol=lf
+tsconfig.json text eol=lf
+package.json text eol=lf
+
+# ==========================================
+# Shell Scripts
+# ==========================================
+*.sh text eol=lf
+*.bash text eol=lf
+
+# ==========================================
+# Windows Scripts
+# ==========================================
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# ==========================================
+# Documentation
+# ==========================================
+*.md text eol=lf diff=markdown
+*.txt text eol=lf
+LICENSE text eol=lf
+README text eol=lf
+
+# ==========================================
+# Binary Files
+# ==========================================
+# Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.webp binary
+
+# Fonts
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+
+# Archives
+*.zip binary
+*.tar binary
+*.gz binary
+*.rar binary
+*.7z binary
+
+# Documents
+*.pdf binary
+*.doc binary
+*.docx binary
+*.xls binary
+*.xlsx binary
+*.ppt binary
+*.pptx binary
+
+# Media
+*.mp4 binary
+*.mp3 binary
+*.wav binary
+*.avi binary
+*.mov binary
+
+# ==========================================
+# Diff Settings
+# ==========================================
+# Use better diff for package.json
+package.json merge=json
+package-lock.json merge=json linguist-generated=true
+yarn.lock merge=yarn linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+
+# ==========================================
+# Linguist Settings (GitHub language detection)
+# ==========================================
+# Exclude generated files from language statistics
+dist/** linguist-generated=true
+build/** linguist-generated=true
+coverage/** linguist-generated=true
+*.min.js linguist-generated=true
+*.min.css linguist-generated=true
+
+# Mark documentation
+*.md linguist-documentation=true
+docs/** linguist-documentation=true
+
+# Vendor files
+node_modules/** linguist-vendored=true
+vendor/** linguist-vendored=true
+
+# ==========================================
+# Export Ignore (files not included in git archive)
+# ==========================================
+.gitattributes export-ignore
+.gitignore export-ignore
+.github export-ignore
+.vscode export-ignore
+.idea export-ignore
+*.test.* export-ignore
+*.spec.* export-ignore
+__tests__ export-ignore
+tests export-ignore
