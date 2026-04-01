@@ -34,10 +34,12 @@ export class ProductController {
    */
   getList = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { categoryId, keyword, sort, page = '0', size = '20' } = req.query;
+      const { categoryId, keyword, minPrice, maxPrice, sort, page = '0', size = '20' } = req.query;
       const result = await this.productService.getProductList({
         categoryId: categoryId ? Number(categoryId) : undefined,
         keyword: keyword as string,
+        minPrice: minPrice ? Number(minPrice) : undefined,
+        maxPrice: maxPrice ? Number(maxPrice) : undefined,
         sort: sort as string,
         page: Number(page),
         size: Number(size),

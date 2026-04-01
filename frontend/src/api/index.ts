@@ -52,6 +52,8 @@ export const productApi = {
   getList: (params: {
     categoryId?: number;
     keyword?: string;
+    minPrice?: number;
+    maxPrice?: number;
     sort?: string;
     page?: number;
     size?: number;

@@ -11,8 +11,55 @@ import {
   UserProfile,
 } from '../types/shared';
 import { BusinessException, NotFoundException, ForbiddenException } from '../utils/error.util';
+import {
+  DEFAULT_PRODUCT_CATEGORY_NAMES,
+  sortCategoryEntitiesByDefaultOrder,
+} from '../constants/product-categories';
 
 export class ProductService {
+  private async resolveCategoryId(
+    data: Pick<CreateProductRequest | UpdateProductRequest, 'categoryId' | 'categoryName'>
+  ): Promise<bigint | null | undefined> {
+    if (data.categoryId !== undefined && data.categoryId !== null) {
+      const category = await prisma.category.findUnique({
+        where: { id: BigInt(data.categoryId) },
+      });
+
+      if (!category) {
+        throw new BusinessException('分类不存在');
+      }
+
+      return BigInt(data.categoryId);
+    }
+
+    if (data.categoryName === undefined) {
+      return undefined;
+    }
+
+    const normalizedCategoryName = data.categoryName?.trim();
+    if (!normalizedCategoryName) {
+      return null;
+    }
+
+    const existingCategory = await prisma.category.findFirst({
+      where: { name: normalizedCategoryName },
+    });
+
+    if (existingCategory) {
+      return existingCategory.id;
+    }
+
+    if (!DEFAULT_PRODUCT_CATEGORY_NAMES.includes(normalizedCategoryName as (typeof DEFAULT_PRODUCT_CATEGORY_NAMES)[number])) {
+      throw new BusinessException('分类不存在');
+    }
+
+    const createdCategory = await prisma.category.create({
+      data: { name: normalizedCategoryName },
+    });
+
+    return createdCategory.id;
+  }
+
   /**
    * 杞崲 Prisma Product 涓哄叡浜被鍨?
    * 浼樺寲锛氫娇鐢ㄩ鍔犺浇鐨勬暟鎹伩鍏?N+1 鏌ヨ
@@ -140,14 +187,22 @@ export class ProductService {
   async getProductList(params: {
     categoryId?: number;
     keyword?: string;
+    minPrice?: number;
+    maxPrice?: number;
     sort?: string;
     page: number;
     size: number;
   }): Promise<PageResponse<ProductListItem>> {
-    const { categoryId, keyword, sort, page, size } = params;
+    const { categoryId, keyword, minPrice, maxPrice, sort, page, size } = params;
 
     const where: any = { status: 'ON_SALE' as any };
     if (categoryId) where.categoryId = BigInt(categoryId);
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      where.price = {
+        ...(minPrice !== undefined ? { gte: minPrice } : {}),
+        ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+      };
+    }
     if (keyword) {
       where.OR = [
         { title: { contains: keyword, mode: 'insensitive' } },
@@ -226,7 +281,7 @@ export class ProductService {
       throw new BusinessException('价格必须大于0');
     }
 
-    if (data.originalPrice && data.originalPrice < data.price) {
+    if (data.originalPrice != null && data.originalPrice < data.price) {
       throw new BusinessException('鍘熶环涓嶈兘浣庝簬鐜颁环');
     }
 
@@ -238,30 +293,7 @@ export class ProductService {
       throw new BusinessException('鍟嗗搧鎻忚堪涓嶈兘涓虹┖');
     }
 
-    // 澶勭悊鍒嗙被锛氭敮鎸?categoryId 鎴?categoryName
-    let categoryId: bigint | null = null;
-    
-    if (data.categoryId) {
-      // 濡傛灉鎻愪緵浜?categoryId锛岄獙璇佹槸鍚﹀瓨鍦?
-      const category = await prisma.category.findUnique({
-        where: { id: BigInt(data.categoryId) },
-      });
-
-      if (!category) {
-        throw new BusinessException('分类不存在');
-      }
-      categoryId = BigInt(data.categoryId);
-    } else if (data.categoryName) {
-      // 濡傛灉鎻愪緵浜?categoryName锛屾煡鎵惧搴旂殑鍒嗙被
-      const category = await prisma.category.findFirst({
-        where: { name: data.categoryName },
-      });
-
-      if (category) {
-        categoryId = category.id;
-      }
-      // 濡傛灉鎵句笉鍒板垎绫伙紝categoryId 淇濇寔涓?null
-    }
+    const categoryId = (await this.resolveCategoryId(data)) ?? null;
 
     const product = await prisma.product.create({
       data: {
@@ -311,31 +343,18 @@ export class ProductService {
       throw new BusinessException('价格必须大于0');
     }
 
-    if (
-      data.originalPrice !== undefined &&
-      data.price !== undefined &&
-      data.originalPrice < data.price
-    ) {
+    const nextPrice = data.price !== undefined ? data.price : Number(product.price);
+    if (data.originalPrice != null && data.originalPrice < nextPrice) {
       throw new BusinessException('鍘熶环涓嶈兘浣庝簬鐜颁环');
     }
 
-    // 濡傛灉鏇存柊浜嗗垎绫伙紝楠岃瘉鍒嗙被鏄惁瀛樺湪
-    if (data.categoryId) {
-      const category = await prisma.category.findUnique({
-        where: { id: BigInt(data.categoryId) },
-      });
-
-      if (!category) {
-        throw new BusinessException('分类不存在');
-      }
-    }
-
     const updateData: any = {};
+    const resolvedCategoryId = await this.resolveCategoryId(data);
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.price !== undefined) updateData.price = data.price;
     if (data.originalPrice !== undefined) updateData.originalPrice = data.originalPrice;
-    if (data.categoryId !== undefined) updateData.categoryId = BigInt(data.categoryId);
+    if (resolvedCategoryId !== undefined) updateData.categoryId = resolvedCategoryId;
     if (data.location !== undefined) updateData.location = data.location;
 
     await prisma.product.update({
@@ -430,7 +449,20 @@ export class ProductService {
       orderBy: { id: 'asc' },
     });
 
-    return categories.map((category: any) => ({
+    const existingCategoryNames = new Set(categories.map((category: any) => category.name));
+    const missingDefaultCategories = DEFAULT_PRODUCT_CATEGORY_NAMES.filter(
+      (name) => !existingCategoryNames.has(name)
+    );
+
+    const createdCategories = await Promise.all(
+      missingDefaultCategories.map((name) =>
+        prisma.category.create({
+          data: { name },
+        })
+      )
+    );
+
+    return sortCategoryEntitiesByDefaultOrder([...categories, ...createdCategories]).map((category: any) => ({
       id: Number(category.id),
       name: category.name,
       icon: undefined, // 鏁版嵁搴撲腑娌℃湁 icon 瀛楁

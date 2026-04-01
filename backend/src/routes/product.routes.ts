@@ -18,6 +18,16 @@ const productListQuerySchema = z.object({
     .transform(Number)
     .optional(),
   keyword: z.string().optional(),
+  minPrice: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/, '无效的 minPrice')
+    .transform(Number)
+    .optional(),
+  maxPrice: z
+    .string()
+    .regex(/^\d+(\.\d{1,2})?$/, '无效的 maxPrice')
+    .transform(Number)
+    .optional(),
   sort: z.enum(['latest', 'priceAsc', 'priceDesc', 'viewDesc']).optional(),
   page: z
     .string()

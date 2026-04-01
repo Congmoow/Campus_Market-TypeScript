@@ -9,6 +9,7 @@ import { FolderUpload, Clear } from '@icon-park/react';
 import { useNavigate } from 'react-router-dom';
 import { productApi, fileApi } from '../api';
 import { isAuthenticated } from '../lib/auth';
+import { PUBLISH_CATEGORY_ORDER, sortCategoriesByPublishOrder } from '../lib/product-categories';
 import type { ApiResponse, UploadResponse } from '../../../backend/src/types/shared';
 
 const CAMPUS_OPTIONS = ['下沙校区', '南浔校区'];
@@ -28,6 +29,7 @@ const Publish: FC = () => {
   const [price, setPrice] = useState<string>('');
   const [originalPrice, setOriginalPrice] = useState<string>('');
   const [location, setLocation] = useState<string>('');
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([...PUBLISH_CATEGORY_ORDER]);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [locationOpen, setLocationOpen] = useState<boolean>(false);
@@ -56,6 +58,21 @@ const Publish: FC = () => {
     };
   }, [locationOpen]);
 
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await productApi.getCategories();
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setCategoryOptions(sortCategoriesByPublishOrder(res.data).map((item) => item.name));
+        }
+      } catch {
+        // 分类加载失败时保留默认发布分类。
+      }
+    };
+
+    loadCategories();
+  }, []);
+
   const handleClear = () => {
     setImages([]);
     setCategory('');
@@ -66,8 +83,6 @@ const Publish: FC = () => {
     setLocation('');
     setError('');
   };
-
-  const categories = ["数码产品", "书籍教材", "生活用品", "衣物鞋帽", "美妆护肤", "运动器材", "其他"];
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -305,7 +320,7 @@ const Publish: FC = () => {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">分类 <span className="text-red-500">*</span></label>
               <div className="flex flex-wrap gap-2">
-                {categories.map((cat) => (
+                {categoryOptions.map((cat) => (
                   <button
                     key={cat}
                     type="button"

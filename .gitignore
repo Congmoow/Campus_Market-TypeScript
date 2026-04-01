@@ -101,6 +101,13 @@ junit.xml
 .vscode-test/
 *.code-workspace
 
+# Visual Studio
+.vs/
+
+# Local workspace metadata
+.codex/
+docs/
+
 # JetBrains IDEs (WebStorm, IntelliJ, etc.)
 .idea/
 *.iml

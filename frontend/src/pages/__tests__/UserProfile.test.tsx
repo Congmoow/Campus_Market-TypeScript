@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UserProfile from '../UserProfile';
@@ -51,9 +51,22 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock('../../api', () => apiMocks);
 
+const flushAsync = () => new Promise((resolve) => setTimeout(resolve, 0));
+const originalConsoleError = console.error;
+
 describe('UserProfile', () => {
+  let consoleErrorSpy: { mockRestore: () => void };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((message, ...args) => {
+      if (typeof message === 'string' && message.includes('not wrapped in act')) {
+        return;
+      }
+
+      originalConsoleError(message, ...args);
+    });
+    window.history.replaceState({}, '', '/user/2');
     mockUseParams.mockReturnValue({ id: '2' });
     authState.isAuthenticated.mockReturnValue(true);
     authState.getStoredUser.mockImplementation(() => {
@@ -97,6 +110,10 @@ describe('UserProfile', () => {
     });
   });
 
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
   it('starts a chat session with the viewed seller when clicking contact', async () => {
     const user = userEvent.setup();
 
@@ -123,7 +140,7 @@ describe('UserProfile', () => {
     expect(screen.getByText('Seller bio')).toBeInTheDocument();
   });
 
-  it('hydrates current user header from local cache before profile request resolves', async () => {
+  it('renders profile skeletons instead of cached profile text while request resolves', async () => {
     let resolveProfile!: (value: any) => void;
     const pendingProfile = new Promise((resolve) => {
       resolveProfile = resolve;
@@ -160,14 +177,12 @@ describe('UserProfile', () => {
 
     const { container } = render(<UserProfile />);
 
-    expect(screen.getByRole('heading', { name: 'Cached Seller' })).toBeInTheDocument();
-    expect(screen.getByText('Yuquan')).toBeInTheDocument();
-    expect(screen.getByText(/Computer Science/)).toBeInTheDocument();
-    expect(screen.getByText('Cached signature')).toBeInTheDocument();
-    expect(screen.getByText(new Date(cachedJoinAt).toLocaleDateString('zh-CN'))).toBeInTheDocument();
-    expect(container.querySelector('img.object-cover')?.getAttribute('src')).toBe(
-      'https://cdn.example.com/cached-avatar.png'
-    );
+    expect(screen.queryByRole('heading', { name: 'Cached Seller' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Yuquan')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Computer Science/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Cached signature')).not.toBeInTheDocument();
+    expect(screen.queryByText(new Date(cachedJoinAt).toLocaleDateString('zh-CN'))).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThanOrEqual(5);
 
     await act(async () => {
       resolveProfile({
@@ -180,5 +195,56 @@ describe('UserProfile', () => {
       });
       await pendingProfile;
     });
+  });
+
+  it('persists the sold tab in the URL and restores it after rerender', async () => {
+    const user = userEvent.setup();
+    const productStatuses: string[] = [];
+
+    apiMocks.userApi.getUserProducts.mockImplementation((_userId: number, status: string) => {
+      productStatuses.push(status);
+      return Promise.resolve({
+        success: true,
+        data: [
+          {
+            id: status === 'SOLD' ? 202 : 101,
+            title: status === 'SOLD' ? 'Sold Product' : 'Seller Product',
+            price: 88,
+            createdAt: new Date().toISOString(),
+            images: [],
+            sellerId: 2,
+          },
+        ],
+      });
+    });
+
+    let unmount!: () => void;
+    await act(async () => {
+      ({ unmount } = render(<UserProfile />));
+      await flushAsync();
+    });
+    await screen.findByText('Seller Product');
+
+    const soldTab = screen.getByText(/已卖出|宸插崠鍑?/).closest('div') as HTMLDivElement;
+    await user.click(soldTab);
+    await act(async () => {
+      await flushAsync();
+    });
+
+    await screen.findByText('Sold Product');
+    expect(window.location.search).toBe('?tab=sold');
+
+    apiMocks.userApi.getUserProducts.mockClear();
+    productStatuses.length = 0;
+
+    await act(async () => {
+      unmount();
+      render(<UserProfile />);
+      await flushAsync();
+    });
+
+    await screen.findByText('Sold Product');
+    expect(apiMocks.userApi.getUserProducts).toHaveBeenCalledWith(2, 'SOLD');
+    expect(productStatuses[0]).toBe('SOLD');
   });
 });
