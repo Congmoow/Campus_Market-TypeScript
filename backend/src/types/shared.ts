@@ -104,8 +104,9 @@ export interface CreateProductRequest {
   title: string;
   description: string;
   price: number;
-  originalPrice?: number;
-  categoryId: number;
+  originalPrice?: number | null;
+  categoryId?: number;
+  categoryName?: string | null;
   location: string;
   images: string[];
 }
@@ -114,8 +115,9 @@ export interface UpdateProductRequest {
   title?: string;
   description?: string;
   price?: number;
-  originalPrice?: number;
+  originalPrice?: number | null;
   categoryId?: number;
+  categoryName?: string | null;
   location?: string;
   images?: string[];
 }

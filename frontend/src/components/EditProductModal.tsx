@@ -3,12 +3,19 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Upload, Trash2, Save, Loader2, ChevronDown } from 'lucide-react';
 import { fileApi } from '../api';
+import { PUBLISH_CATEGORY_ORDER, sortCategoriesByPublishOrder } from '../lib/product-categories';
 
 interface Category {
   id: number;
   name: string;
   icon?: string;
 }
+
+type ProductImageValue =
+  | string
+  | {
+      url?: string;
+    };
 
 interface Product {
   id: number;
@@ -17,8 +24,9 @@ interface Product {
   price: number;
   originalPrice?: number;
   categoryName?: string;
+  category?: Category | null;
   location: string;
-  images: string[];
+  images: ProductImageValue[];
 }
 
 interface EditProductModalProps {
@@ -33,7 +41,7 @@ interface EditProductModalProps {
     originalPrice: number | null;
     categoryName: string | null;
     location: string;
-    imageUrls: string[];
+    images: string[];
   }) => Promise<void>;
 }
 
@@ -49,17 +57,7 @@ interface FormData {
 
 // 商品编辑弹窗：用于修改已发布商品的标题、价格、分类、图片等信息
 const CAMPUS_OPTIONS = ['下沙校区', '南浔校区'];
-const CATEGORY_OPTIONS = [
-  '数码产品',
-  '书籍教材',
-  '生活用品',
-  '衣物鞋帽',
-  '美妆护肤',
-  '运动器材',
-  '其他',
-];
-
-const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, product, onSave }) => {
+const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, product, categories, onSave }) => {
   const [formData, setFormData] = useState<FormData>({
     title: '',
     description: '',
@@ -77,9 +75,21 @@ const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, pr
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const [campusOpen, setCampusOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const categoryOptions = sortCategoriesByPublishOrder(
+    categories.length > 0
+      ? categories
+      : PUBLISH_CATEGORY_ORDER.map((name, index) => ({ id: index + 1, name }))
+  );
 
   useEffect(() => {
     if (product && isOpen) {
+      const normalizedImages = (product.images || []).flatMap((image) => {
+        if (typeof image === 'string') {
+          return image ? [image] : [];
+        }
+
+        return image?.url ? [image.url] : [];
+      });
       const initLocation = product.location && CAMPUS_OPTIONS.includes(product.location)
         ? product.location
         : '';
@@ -88,11 +98,11 @@ const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, pr
         description: product.description || '',
         price: product.price?.toString() || '',
         originalPrice: product.originalPrice?.toString() || '',
-        categoryName: product.categoryName || '',
+        categoryName: product.categoryName || product.category?.name || '',
         location: initLocation,
-        images: product.images || []
+        images: normalizedImages
       });
-      setImageUrls(product.images || []);
+      setImageUrls(normalizedImages);
     }
   }, [product, isOpen]);
 
@@ -136,7 +146,7 @@ const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, pr
         originalPrice: formData.originalPrice ? parseFloat(formData.originalPrice) : null,
         categoryName: formData.categoryName || null,
         location: formData.location,
-        imageUrls: imageUrls,
+        images: imageUrls,
       });
       onClose();
     } catch (error) {
@@ -334,19 +344,19 @@ const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, pr
                         </button>
                         {categoryOpen && (
                           <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg py-1 max-h-56 overflow-auto">
-                            {CATEGORY_OPTIONS.map((name) => (
+                            {categoryOptions.map((category) => (
                               <button
                                 type="button"
-                                key={name}
+                                key={category.id}
                                 onClick={() => {
-                                  setFormData((prev) => ({ ...prev, categoryName: name }));
+                                  setFormData((prev) => ({ ...prev, categoryName: category.name }));
                                   setCategoryOpen(false);
                                 }}
                                 className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${
-                                  formData.categoryName === name ? 'text-blue-600 bg-blue-50' : 'text-slate-700'
+                                  formData.categoryName === category.name ? 'text-blue-600 bg-blue-50' : 'text-slate-700'
                                 }`}
                               >
-                                {name}
+                                {category.name}
                               </button>
                             ))}
                           </div>

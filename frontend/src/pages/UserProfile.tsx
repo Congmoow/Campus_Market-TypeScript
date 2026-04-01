@@ -74,12 +74,31 @@ interface CachedProfileUser {
   joinAt?: string | Date;
 }
 
+type ProductTab = 'ON_SALE' | 'SOLD';
+
+const PRODUCT_TAB_QUERY_KEY = 'tab';
+
 const getProfileField = <T extends keyof UserProfileType>(
   profile: ProfileData | null,
   key: T
 ): UserProfileType[T] | undefined => {
   const topLevelValue = profile?.[key as keyof ProfileData];
   return (topLevelValue as UserProfileType[T] | undefined) ?? profile?.profile?.[key];
+};
+
+const getProductTabFromSearch = (search: string): ProductTab => {
+  const tab = new URLSearchParams(search).get(PRODUCT_TAB_QUERY_KEY);
+  return tab === 'sold' ? 'SOLD' : 'ON_SALE';
+};
+
+const syncProductTabToUrl = (tab: ProductTab) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set(PRODUCT_TAB_QUERY_KEY, tab === 'SOLD' ? 'sold' : 'on-sale');
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
 };
 
 const getInitialProfile = (userId: string | undefined): ProfileData | null => {
@@ -189,7 +208,9 @@ const UserProfile: React.FC = () => {
   const [productsLoading, setProductsLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [activeProductTab, setActiveProductTab] = useState<'ON_SALE' | 'SOLD'>('ON_SALE');
+  const [activeProductTab, setActiveProductTab] = useState<ProductTab>(() =>
+    getProductTabFromSearch(typeof window === 'undefined' ? '' : window.location.search)
+  );
 
   const currentUser = getStoredUser<CachedProfileUser>();
   const isCurrentUser = !!currentUser && String(currentUser.userId || currentUser.id) === id;
@@ -228,7 +249,7 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const loadProductsByStatus = async (status: string) => {
+  const loadProductsByStatus = async (status: ProductTab) => {
     if (!id) return;
 
     try {
@@ -274,9 +295,12 @@ const UserProfile: React.FC = () => {
   const loadData = async () => {
     if (!id) return;
 
+    const initialTab = getProductTabFromSearch(typeof window === 'undefined' ? '' : window.location.search);
+
     try {
       setProfileLoading(true);
       setProfile(getInitialProfile(id));
+      setActiveProductTab(initialTab);
 
       const profileRes = await userApi.getProfile(Number(id));
       if (profileRes.success && profileRes.data) {
@@ -287,7 +311,7 @@ const UserProfile: React.FC = () => {
         console.error(profileRes.message || '加载用户信息失败');
       }
 
-      await loadProductsByStatus('ON_SALE');
+      await loadProductsByStatus(initialTab);
     } catch (error) {
       console.error('加载用户主页失败，请稍后重试', error);
     } finally {
@@ -295,11 +319,12 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const handleProductTabClick = (tab: 'ON_SALE' | 'SOLD') => {
+  const handleProductTabClick = (tab: ProductTab) => {
     if (tab === activeProductTab) return;
 
     setActiveProductTab(tab);
-    void loadProductsByStatus(tab === 'SOLD' ? 'SOLD' : 'ON_SALE');
+    syncProductTabToUrl(tab);
+    void loadProductsByStatus(tab);
   };
 
   useEffect(() => {
@@ -318,17 +343,22 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const avatarUrl = getUserAvatarUrl(profile);
-  const displayName = profile?.name || profile?.studentId;
-  const displayMajor = getProfileField(profile, 'major');
-  const displayGrade = getProfileField(profile, 'grade');
-  const displayCampus = getProfileField(profile, 'campus') || profile?.profile?.location;
-  const displayBio = profile?.bio || profile?.profile?.bio;
-  const displayJoinDate = profile?.joinAt
-    ? new Date(profile.joinAt).toLocaleDateString('zh-CN')
-    : profile?.createdAt && new Date(profile.createdAt).getTime() > 0
-      ? new Date(profile.createdAt).toLocaleDateString('zh-CN')
-      : undefined;
+  const avatarUrl = profileLoading ? '' : getUserAvatarUrl(profile);
+  const displayName = profileLoading ? undefined : profile?.name || profile?.studentId;
+  const displayStudentId = profileLoading ? undefined : profile?.studentId;
+  const displayMajor = profileLoading ? undefined : getProfileField(profile, 'major');
+  const displayGrade = profileLoading ? undefined : getProfileField(profile, 'grade');
+  const displayCampus =
+    profileLoading ? undefined : getProfileField(profile, 'campus') || profile?.profile?.location;
+  const displayBio = profileLoading ? undefined : profile?.bio || profile?.profile?.bio;
+  const displayCredit = profileLoading ? undefined : profile?.credit ?? 700;
+  const displayJoinDate = profileLoading
+    ? undefined
+    : profile?.joinAt
+      ? new Date(profile.joinAt).toLocaleDateString('zh-CN')
+      : profile?.createdAt && new Date(profile.createdAt).getTime() > 0
+        ? new Date(profile.createdAt).toLocaleDateString('zh-CN')
+        : undefined;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -361,14 +391,14 @@ const UserProfile: React.FC = () => {
           <div className="px-8 pb-8">
             <div className="relative flex justify-between items-end -mt-12 mb-6">
               <div className="w-32 h-32 rounded-full shadow-xl">
-                {avatarUrl ? (
+                {profileLoading ? (
+                  <div className="w-full h-full rounded-full bg-slate-200 animate-pulse" />
+                ) : avatarUrl ? (
                   <img
                     src={avatarUrl}
                     alt={profile?.nickname || profile?.studentId || '用户头像'}
                     className="w-full h-full rounded-full bg-slate-100 object-cover"
                   />
-                ) : profileLoading ? (
-                  <div className="w-full h-full rounded-full bg-slate-200 animate-pulse" />
                 ) : (
                   <img
                     src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${
@@ -398,14 +428,12 @@ const UserProfile: React.FC = () => {
               <div className="md:w-1/3 space-y-6">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                    {displayName || (profileLoading ? <LoadingLine className="h-8 w-36" /> : '同学')}
+                    {profileLoading ? <LoadingLine className="h-8 w-36" /> : displayName || '同学'}
                     <ShieldCheck className="text-blue-500" size={20} />
                   </h1>
                   <p className="text-slate-500 mt-1">
-                    {profile?.studentId && (
-                      <span className="font-mono text-sm">{profile.studentId}</span>
-                    )}
-                    {profile?.studentId && (displayMajor || displayGrade) && ' · '}
+                    {displayStudentId && <span className="font-mono text-sm">{displayStudentId}</span>}
+                    {displayStudentId && (displayMajor || displayGrade) && ' · '}
                     {displayMajor || displayGrade ? (
                       <>
                         {displayMajor || '专业未设置'} · {displayGrade || '年级未设置'}
@@ -422,21 +450,31 @@ const UserProfile: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <ShieldCheck size={16} className="text-green-500" />
                     <span>
-                      信用分：
-                      <span className="font-bold text-slate-900">{profile?.credit ?? 700}</span>{' '}
-                      (极好)
+                      {profileLoading ? (
+                        <LoadingLine className="h-4 w-28" />
+                      ) : (
+                        <>
+                          信用分：
+                          <span className="font-bold text-slate-900">{displayCredit}</span>{' '}
+                          (极好)
+                        </>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin size={16} />
                     <span>
-                      {displayCampus || (profileLoading ? <LoadingLine className="h-4 w-20" /> : '校内')}
+                      {profileLoading ? <LoadingLine className="h-4 w-20" /> : displayCampus || '校内'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={16} />
                     <span>
-                      {displayJoinDate || (profileLoading ? <LoadingLine className="h-4 w-24" /> : '加入时间未知')}
+                      {profileLoading ? (
+                        <LoadingLine className="h-4 w-24" />
+                      ) : (
+                        displayJoinDate || '加入时间未知'
+                      )}
                     </span>
                   </div>
                 </div>
