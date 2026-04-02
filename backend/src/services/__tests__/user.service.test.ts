@@ -118,10 +118,9 @@ describe('UserService', () => {
       expect(result.profile).toEqual(
         expect.objectContaining({
           name: 'New Name',
-          nickname: 'New Name',
           phone: '13900000000',
           bio: 'New bio',
-          location: 'Zijingang',
+          campus: 'Zijingang',
         })
       );
     });

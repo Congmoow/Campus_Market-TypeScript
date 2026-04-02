@@ -38,7 +38,7 @@ type CurrentUserLike = ReturnType<typeof getCurrentUser>;
 
 const getCampusValue = (user?: User | CurrentUserLike | null): string | undefined => {
   if (!user) return undefined;
-  return user.profile?.campus || user.profile?.location || user.campus || user.location || undefined;
+  return user.profile?.campus || user.campus || undefined;
 };
 
 const Checkout: React.FC = () => {

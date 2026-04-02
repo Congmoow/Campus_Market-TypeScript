@@ -144,7 +144,7 @@ const MyOrders: FC = () => {
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden min-h-[600px]">
           <div className="p-6 border-b border-slate-50 flex gap-2 overflow-x-auto no-scrollbar">
-            {['ALL', 'PENDING', 'DONE'].map((status) => (
+            {['ALL', 'PENDING', 'COMPLETED'].map((status) => (
               <button
                 key={status}
                 onClick={() => setSelectedStatus(status)}

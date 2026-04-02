@@ -1,17 +1,31 @@
 import { getUserAvatarUrl } from './user-display';
 
-type LooseProfile = Record<string, any> | null | undefined;
+type ProfileFields = {
+  name?: string;
+  studentId?: string;
+  major?: string;
+  grade?: string;
+  campus?: string;
+  bio?: string;
+  avatarUrl?: string;
+};
+
+type ProfileContainer = ProfileFields & {
+  profile?: Partial<ProfileFields>;
+};
+
+type LooseProfile = ProfileContainer | null | undefined;
 
 export function mergeUpdatedProfile(
   currentProfile: LooseProfile,
   submittedProfile: LooseProfile,
   responseProfile: LooseProfile
 ) {
-  const merged = {
+  const merged: ProfileContainer = {
     ...(currentProfile ?? {}),
     ...(responseProfile ?? {}),
     ...(submittedProfile ?? {}),
-  } as Record<string, any>;
+  };
 
   const avatarUrl =
     getUserAvatarUrl(responseProfile) ||
@@ -38,21 +52,11 @@ export function mergeUpdatedProfile(
       responseProfile?.profile?.name ??
       responseProfile?.name ??
       currentProfile?.profile?.name,
-    nickname:
-      submittedProfile?.name ??
-      responseProfile?.profile?.nickname ??
-      responseProfile?.nickname ??
-      currentProfile?.profile?.nickname,
     studentId:
       submittedProfile?.studentId ??
       responseProfile?.profile?.studentId ??
       responseProfile?.studentId ??
       currentProfile?.profile?.studentId,
-    location:
-      submittedProfile?.campus ??
-      responseProfile?.profile?.location ??
-      responseProfile?.campus ??
-      currentProfile?.profile?.location,
     bio:
       submittedProfile?.bio ??
       responseProfile?.profile?.bio ??

@@ -13,7 +13,7 @@ describe('mergeUpdatedProfile', () => {
       bio: 'Old bio',
       profile: {
         name: 'Old Name',
-        location: 'Old Campus',
+        campus: 'Old Campus',
       },
     };
 
@@ -32,14 +32,18 @@ describe('mergeUpdatedProfile', () => {
       studentId: '20230001',
       profile: {
         name: 'New Name',
-        location: 'Zijingang',
+        campus: 'Zijingang',
         bio: 'New bio',
       },
     };
 
-    expect(
-      mergeUpdatedProfile(currentProfile, submittedProfile, responseProfile)
-    ).toEqual(
+    const mergedProfile = mergeUpdatedProfile(
+      currentProfile,
+      submittedProfile,
+      responseProfile
+    );
+
+    expect(mergedProfile).toEqual(
       expect.objectContaining({
         name: 'New Name',
         major: 'Software Engineering',
@@ -49,5 +53,14 @@ describe('mergeUpdatedProfile', () => {
         avatarUrl: '/uploads/avatar-new.png',
       })
     );
+    expect(mergedProfile.profile).toEqual(
+      expect.objectContaining({
+        name: 'New Name',
+        campus: 'Zijingang',
+        bio: 'New bio',
+      })
+    );
+    expect(mergedProfile.profile).not.toHaveProperty('nickname');
+    expect(mergedProfile.profile).not.toHaveProperty('location');
   });
 });

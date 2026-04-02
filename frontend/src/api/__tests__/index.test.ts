@@ -164,7 +164,7 @@ describe('API Client Type Safety', () => {
   });
 
   describe('userApi', () => {
-    it('should normalize profile-edit form payload before sending updateProfile', async () => {
+    it('should send the canonical profile-edit payload to updateProfile', async () => {
       (request.put as any).mockResolvedValue({
         success: true,
         data: {},
@@ -186,9 +186,7 @@ describe('API Client Type Safety', () => {
         major: 'Software Engineering',
         grade: '2023',
         campus: 'Zijingang',
-        location: 'Zijingang',
         bio: 'New bio',
-        avatar: '/new.png',
         avatarUrl: '/new.png',
       });
     });

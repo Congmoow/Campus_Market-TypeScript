@@ -63,5 +63,12 @@ describe('order route validation', () => {
     expect(response.status).toBe(400);
     expect(mockOrderControllerHandlers.getMyOrders).not.toHaveBeenCalled();
   });
+
+  it('rejects the legacy DONE order status filter', async () => {
+    const response = await request(app).get('/orders/me?status=DONE');
+
+    expect(response.status).toBe(400);
+    expect(mockOrderControllerHandlers.getMyOrders).not.toHaveBeenCalled();
+  });
 });
 

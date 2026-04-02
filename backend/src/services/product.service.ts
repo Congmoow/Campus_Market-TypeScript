@@ -142,8 +142,6 @@ export class ProductService {
             major: sellerProfile.major || undefined,
             grade: sellerProfile.grade || undefined,
             bio: sellerProfile.bio || undefined,
-            nickname: sellerProfile.name || undefined,
-            location: sellerProfile.campus || undefined,
           }
         : undefined,
     };

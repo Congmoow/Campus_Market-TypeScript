@@ -46,12 +46,7 @@ export class OrderController {
       }
 
       if (status && status !== 'ALL') {
-        orders = orders.filter((order) => {
-          if (status === 'DONE') {
-            return order.status === 'COMPLETED';
-          }
-          return order.status === status;
-        });
+        orders = orders.filter((order) => order.status === status);
       }
 
       res.json(successResponse(orders));

@@ -64,7 +64,6 @@ interface CachedProfileUser {
   userId?: number;
   studentId?: string;
   name?: string;
-  nickname?: string;
   avatarUrl?: string;
   campus?: string;
   major?: string;
@@ -122,7 +121,7 @@ const getInitialProfile = (userId: string | undefined): ProfileData | null => {
     phone: undefined,
     createdAt: storedUser.createdAt ? new Date(storedUser.createdAt) : new Date(0),
     updatedAt: new Date(0),
-    name: storedUser.name || storedUser.nickname,
+    name: storedUser.name,
     avatarUrl: storedUser.avatarUrl,
     campus: storedUser.campus,
     major: storedUser.major,
@@ -132,11 +131,9 @@ const getInitialProfile = (userId: string | undefined): ProfileData | null => {
     profile: {
       id: storedUserId,
       userId: storedUserId,
-      name: storedUser.name || storedUser.nickname,
-      nickname: storedUser.nickname,
+      name: storedUser.name,
       studentId: storedUser.studentId,
       campus: storedUser.campus,
-      location: storedUser.campus,
       avatarUrl: storedUser.avatarUrl,
       major: storedUser.major,
       grade: storedUser.grade,
@@ -157,17 +154,15 @@ const syncCurrentUserCache = (profileData: ProfileData) => {
     profileData.name ||
     profileData.profile?.name ||
     storedUser.name ||
-    storedUser.nickname ||
     storedUser.studentId;
 
   const updatedUser = {
     ...storedUser,
     id: profileData.id,
     name: displayName,
-    nickname: displayName,
     studentId: profileData.studentId || storedUser.studentId,
     avatarUrl: getUserAvatarUrl(profileData) || storedUser.avatarUrl,
-    campus: getProfileField(profileData, 'campus') || profileData.profile?.location || storedUser.campus,
+    campus: getProfileField(profileData, 'campus') || storedUser.campus,
     major: getProfileField(profileData, 'major') || storedUser.major,
     grade: getProfileField(profileData, 'grade') || storedUser.grade,
     bio: profileData.bio || profileData.profile?.bio || storedUser.bio,
@@ -343,8 +338,7 @@ const UserProfile: React.FC = () => {
   const displayStudentId = profileLoading ? undefined : profile?.studentId;
   const displayMajor = profileLoading ? undefined : getProfileField(profile, 'major');
   const displayGrade = profileLoading ? undefined : getProfileField(profile, 'grade');
-  const displayCampus =
-    profileLoading ? undefined : getProfileField(profile, 'campus') || profile?.profile?.location;
+  const displayCampus = profileLoading ? undefined : getProfileField(profile, 'campus');
   const displayBio = profileLoading ? undefined : profile?.bio || profile?.profile?.bio;
   const displayCredit = profileLoading ? undefined : profile?.credit ?? 700;
   const displayJoinDate = profileLoading

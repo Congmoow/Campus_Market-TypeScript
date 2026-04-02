@@ -1,12 +1,10 @@
-﻿type DisplayNameProfile = {
+type DisplayNameProfile = {
   name?: string | null;
-  nickname?: string | null;
   studentId?: string | null;
 };
 
 type DisplayNameSource = {
   name?: string | null;
-  nickname?: string | null;
   username?: string | null;
   studentId?: string | null;
   profile?: DisplayNameProfile | null;
@@ -39,8 +37,6 @@ export function getUserDisplayName(
   return (
     normalizeValue(source?.profile?.name) ||
     normalizeValue(source?.name) ||
-    normalizeValue(source?.profile?.nickname) ||
-    normalizeValue(source?.nickname) ||
     normalizeValue(source?.profile?.studentId) ||
     normalizeValue(source?.studentId) ||
     normalizeValue(source?.username) ||

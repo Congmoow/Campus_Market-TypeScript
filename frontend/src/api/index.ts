@@ -1,5 +1,11 @@
 ﻿import request from './axios';
 import type {
+  AdminCategoryListItem,
+  AdminOrderListResponse,
+  AdminProductListResponse,
+  AdminStatistics,
+  AdminUserListResponse,
+  AdminUserStatusUpdate,
   ApiResponse,
   AuthResponse,
   Category,
@@ -84,29 +90,8 @@ export const userApi = {
   getUserProducts: (id: number, status?: string): Promise<ApiResponse<ProductListItem[]>> =>
     request.get(`/users/${id}/products`, { params: { status } }),
 
-  updateProfile: (data: UpdateProfileRequest): Promise<ApiResponse<User>> => {
-    const normalizedData: UpdateProfileRequest = {
-      ...data,
-    };
-
-    if (data.nickname !== undefined && normalizedData.name === undefined) {
-      normalizedData.name = data.nickname;
-    }
-    if (data.campus !== undefined && normalizedData.location === undefined) {
-      normalizedData.location = data.campus;
-    }
-    if (data.location !== undefined && normalizedData.campus === undefined) {
-      normalizedData.campus = data.location;
-    }
-    if (data.avatarUrl !== undefined && normalizedData.avatar === undefined) {
-      normalizedData.avatar = data.avatarUrl;
-    }
-    if (data.avatar !== undefined && normalizedData.avatarUrl === undefined) {
-      normalizedData.avatarUrl = data.avatar;
-    }
-
-    return request.put('/users/me', normalizedData);
-  },
+  updateProfile: (data: UpdateProfileRequest): Promise<ApiResponse<User>> =>
+    request.put('/users/me', data),
 };
 
 export const orderApi = {
@@ -184,79 +169,24 @@ export const favoriteApi = {
 };
 
 export const adminApi = {
-  getStatistics: (): Promise<ApiResponse<{
-    totalUsers: number;
-    totalProducts: number;
-    totalOrders: number;
-    activeUsers: number;
-    todayUsers: number;
-    todayProducts: number;
-    todayOrders: number;
-    orderStatusDistribution: Array<{
-      status: string;
-      count: number;
-    }>;
-    salesTrend: Array<{
-      date: string;
-      amount: number;
-    }>;
-    userGrowthTrend: Array<{
-      month: string;
-      users: number;
-      newUsers: number;
-    }>;
-  }>> =>
+  getStatistics: (): Promise<ApiResponse<AdminStatistics>> =>
     request.get('/admin/statistics'),
 
   getAllUsers: (params: {
     page?: number;
     pageSize?: number;
     keyword?: string;
-  }): Promise<ApiResponse<{
-    users: Array<{
-      id: number;
-      studentId: string;
-      phone: string | null;
-      role: string;
-      enabled: boolean;
-      createdAt: Date;
-      updatedAt: Date;
-    }>;
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
-  }>> =>
+  }): Promise<ApiResponse<AdminUserListResponse>> =>
     request.get('/admin/users', { params }),
 
-  toggleUserStatus: (userId: number): Promise<ApiResponse<{
-    id: number;
-    studentId: string;
-    enabled: boolean;
-  }>> =>
+  toggleUserStatus: (userId: number): Promise<ApiResponse<AdminUserStatusUpdate>> =>
     request.put(`/admin/users/${userId}/toggle-status`),
 
   getAllProducts: (params: {
     page?: number;
     pageSize?: number;
     keyword?: string;
-  }): Promise<ApiResponse<{
-    products: Array<{
-      id: number;
-      sellerId: number;
-      title: string;
-      description: string;
-      price: number;
-      status: string;
-      viewCount: number;
-      imageUrl?: string;
-      createdAt: Date;
-    }>;
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
-  }>> =>
+  }): Promise<ApiResponse<AdminProductListResponse>> =>
     request.get('/admin/products', { params }),
 
   deleteProduct: (productId: number): Promise<ApiResponse<void>> =>
@@ -266,38 +196,13 @@ export const adminApi = {
     page?: number;
     pageSize?: number;
     keyword?: string;
-  }): Promise<ApiResponse<{
-    orders: Array<{
-      id: number;
-      orderNo: string;
-      buyerId: number;
-      sellerId: number;
-      productId: number;
-      status: string;
-      priceSnapshot: number;
-      meetLocation: string | null;
-      meetTime: Date | null;
-      createdAt: Date;
-      updatedAt: Date;
-    }>;
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
-  }>> =>
+  }): Promise<ApiResponse<AdminOrderListResponse>> =>
     request.get('/admin/orders', { params }),
 
-  getAllCategories: (): Promise<ApiResponse<Array<{
-    id: number;
-    name: string;
-    productCount: number;
-  }>>> =>
+  getAllCategories: (): Promise<ApiResponse<AdminCategoryListItem[]>> =>
     request.get('/admin/categories'),
 
-  createCategory: (name: string): Promise<ApiResponse<{
-    id: number;
-    name: string;
-  }>> =>
+  createCategory: (name: string): Promise<ApiResponse<Pick<AdminCategoryListItem, 'id' | 'name'>>> =>
     request.post('/admin/categories', { name }),
 
   deleteCategory: (categoryId: number): Promise<ApiResponse<void>> =>

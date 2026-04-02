@@ -61,4 +61,26 @@ describe('product route validation', () => {
     expect(response.status).toBe(400);
     expect(mockProductControllerHandlers.getUserProducts).not.toHaveBeenCalled();
   });
+
+  it('rejects invalid product creation payloads before the controller runs', async () => {
+    const response = await request(app).post('/products').send({
+      title: '',
+      description: '',
+      price: 0,
+      location: '',
+      images: [],
+    });
+
+    expect(response.status).toBe(400);
+    expect(mockProductControllerHandlers.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid product status updates before the controller runs', async () => {
+    const response = await request(app).patch('/products/1/status').send({
+      status: 'DONE',
+    });
+
+    expect(response.status).toBe(400);
+    expect(mockProductControllerHandlers.updateStatus).not.toHaveBeenCalled();
+  });
 });

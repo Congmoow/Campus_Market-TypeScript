@@ -7,19 +7,19 @@ describe('getUserDisplayName', () => {
       getUserDisplayName({
         studentId: '20230001',
         profile: {
-          name: '张三',
+          name: '寮犱笁',
         },
       })
-    ).toBe('张三');
+    ).toBe('寮犱笁');
   });
 
-  it('falls back to legacy nickname when name is absent', () => {
+  it('falls back to top-level name when profile.name is absent', () => {
     expect(
       getUserDisplayName({
         studentId: '20230001',
-        nickname: '阿张',
+        name: '闃垮紶',
       })
-    ).toBe('阿张');
+    ).toBe('闃垮紶');
   });
 
   it('falls back to studentId and then default label', () => {
@@ -29,7 +29,7 @@ describe('getUserDisplayName', () => {
       })
     ).toBe('20230001');
 
-    expect(getUserDisplayName({}, '同学')).toBe('同学');
+    expect(getUserDisplayName({}, '鍚屽')).toBe('鍚屽');
   });
 });
 

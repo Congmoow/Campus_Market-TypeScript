@@ -26,13 +26,13 @@ import {
   isAdmin,
 } from '../lib/auth';
 import { getUserDisplayName } from '../lib/user-display';
+import type { ChatSessionWithDetails } from '@campus-market/shared';
 
 interface UserData {
   id: number;
   username?: string;
   studentId?: string;
   name?: string;
-  nickname?: string;
   avatarUrl?: string;
   campus?: string;
   role?: string;
@@ -110,7 +110,7 @@ const Navbar: React.FC = () => {
         const res = await chatApi.getList();
         if (res.success) {
           const list = res.data || [];
-          const mapped: Notification[] = list.map((s: any) => {
+          const mapped: Notification[] = list.map((s: ChatSessionWithDetails) => {
             const name = s.partnerName || '同学';
             const seed = s.partnerId || name;
             const avatar =
@@ -157,9 +157,8 @@ const Navbar: React.FC = () => {
           const updatedUser: UserData = {
             ...baseUser,
             name: displayName,
-            nickname: displayName,
-            avatarUrl: res.data.avatarUrl || (res.data as any).avatar || baseUser.avatarUrl,
-            campus: res.data.campus || res.data.profile?.location || baseUser.campus,
+            avatarUrl: res.data.avatar || res.data.profile?.avatarUrl || baseUser.avatarUrl,
+            campus: res.data.profile?.campus || baseUser.campus,
           };
           localStorage.setItem('user', JSON.stringify(updatedUser));
           setCurrentUser(updatedUser);

@@ -16,7 +16,6 @@ import { NotFoundException } from '../utils/error.util';
 
 type UserProfileView = User & {
   name?: string;
-  nickname?: string;
   avatarUrl?: string;
   major?: string;
   grade?: string;
@@ -75,7 +74,6 @@ export class UserService {
     return {
       ...base,
       name: profile.name || undefined,
-      nickname: profile.name || undefined,
       studentId: profile.studentId || user.studentId,
       avatarUrl: profile.avatarUrl || undefined,
       major: profile.major || undefined,
@@ -118,9 +116,9 @@ export class UserService {
       where: { userId: BigInt(userId) },
     });
 
-    const normalizedName = data.name ?? data.nickname;
-    const normalizedCampus = data.campus ?? data.location;
-    const normalizedAvatarUrl = data.avatarUrl ?? data.avatar;
+    const normalizedName = data.name;
+    const normalizedCampus = data.campus;
+    const normalizedAvatarUrl = data.avatarUrl;
     const now = new Date();
 
     let updatedUser = user;

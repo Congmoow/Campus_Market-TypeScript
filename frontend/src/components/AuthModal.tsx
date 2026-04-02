@@ -87,7 +87,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
             id: res.data.user.id,
             studentId: res.data.user.studentId,
             name: displayName,
-            nickname: displayName,
             role: res.data.user.role || 'USER',
           });
           onLoginSuccess();
@@ -111,7 +110,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
             id: res.data.user.id,
             studentId: res.data.user.studentId,
             name: displayName,
-            nickname: displayName,
             role: res.data.user.role || 'USER',
           });
           onLoginSuccess();

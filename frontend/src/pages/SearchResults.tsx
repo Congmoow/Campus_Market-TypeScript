@@ -6,6 +6,7 @@ import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
 import ProductCard from '../components/ProductCard';
 import { productApi } from '../api';
+import { getUserDisplayName } from '../lib/user-display';
 import type { ProductListItem } from '@campus-market/shared';
 
 interface CardProduct {
@@ -52,11 +53,7 @@ const mapToCardProduct = (product: ProductListItem): CardProduct => {
     location: product.location || '校内',
     timeAgo: formatRelativeTime(createdAt),
     seller: {
-      name:
-        product.seller?.profile?.name ||
-        product.seller?.profile?.nickname ||
-        product.seller?.studentId ||
-        '同学',
+      name: getUserDisplayName(product.seller, '同学'),
       avatar:
         product.seller?.avatar ||
         `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,

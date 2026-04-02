@@ -1,15 +1,26 @@
-﻿import { prisma } from '../utils/prisma.util';
+import type { Prisma } from '@prisma/client';
+import type {
+  AdminCategoryListItem,
+  AdminOrderListResponse,
+  AdminOrderStatusDistributionItem,
+  AdminProductListResponse,
+  AdminSalesTrendPoint,
+  AdminStatistics,
+  AdminUserGrowthTrendPoint,
+  AdminUserListResponse,
+  AdminUserStatusUpdate,
+} from '@campus-market/shared';
+import { OrderStatus } from '@campus-market/shared';
+import { mapAdminCategory, mapAdminOrder, mapAdminProduct, mapAdminUser } from '../mappers/admin.mapper';
 import { BusinessException, NotFoundException } from '../utils/error.util';
+import { prisma } from '../utils/prisma.util';
 
-/**
- * 绠＄悊鍛樻湇鍔＄被
- * 澶勭悊绠＄悊鍛樼浉鍏崇殑涓氬姟閫昏緫
- */
+type SalesAmountRecord = {
+  price_snapshot: Prisma.Decimal;
+};
+
 export class AdminService {
-  /**
-   * 鑾峰彇绯荤粺缁熻鏁版嵁
-   */
-  async getStatistics() {
+  async getStatistics(): Promise<AdminStatistics> {
     const [totalUsers, totalProducts, totalOrders, activeUsers] = await Promise.all([
       prisma.user.count(),
       prisma.product.count(),
@@ -17,24 +28,18 @@ export class AdminService {
       prisma.user.count({ where: { enabled: true } }),
     ]);
 
-    // 鑾峰彇浠婃棩鏁版嵁
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [todayUsers, todayProducts, todayOrders] = await Promise.all([
-      prisma.user.count({ where: { createdAt: { gte: today } } }),
-      prisma.product.count({ where: { createdAt: { gte: today } } }),
-      prisma.order.count({ where: { createdAt: { gte: today } } }),
-    ]);
-
-    // 鑾峰彇璁㈠崟鐘舵€佸垎甯?
-    const orderStatusDistribution = await this.getOrderStatusDistribution();
-
-    // 鑾峰彇鏈€杩?澶╃殑閿€鍞瓒嬪娍
-    const salesTrend = await this.getSalesTrend(7);
-
-    // 鑾峰彇鏈€杩?涓湀鐨勭敤鎴峰闀胯秼鍔?
-    const userGrowthTrend = await this.getUserGrowthTrend(6);
+    const [todayUsers, todayProducts, todayOrders, orderStatusDistribution, salesTrend, userGrowthTrend] =
+      await Promise.all([
+        prisma.user.count({ where: { createdAt: { gte: today } } }),
+        prisma.product.count({ where: { createdAt: { gte: today } } }),
+        prisma.order.count({ where: { createdAt: { gte: today } } }),
+        this.getOrderStatusDistribution(),
+        this.getSalesTrend(7),
+        this.getUserGrowthTrend(6),
+      ]);
 
     return {
       totalUsers,
@@ -50,112 +55,105 @@ export class AdminService {
     };
   }
 
-  /**
-   * 鑾峰彇璁㈠崟鐘舵€佸垎甯?
-   */
-  async getOrderStatusDistribution() {
-    const statuses = ['PENDING', 'SHIPPED', 'COMPLETED', 'CANCELLED'];
-    const distribution = await Promise.all(
-      statuses.map(async (status) => {
-        const count = await prisma.order.count({ where: { status } });
-        return { status, count };
-      })
+  async getOrderStatusDistribution(): Promise<AdminOrderStatusDistributionItem[]> {
+    const statuses = [
+      OrderStatus.PENDING,
+      OrderStatus.SHIPPED,
+      OrderStatus.COMPLETED,
+      OrderStatus.CANCELLED,
+    ] as const;
+
+    return Promise.all(
+      statuses.map(async (status) => ({
+        status,
+        count: await prisma.order.count({ where: { status } }),
+      }))
     );
-    
-    return distribution;
   }
 
-  /**
-   * 鑾峰彇閿€鍞瓒嬪娍锛堟渶杩慛澶╋級
-   */
-  async getSalesTrend(days: number = 7) {
-    const trend = [];
+  async getSalesTrend(days = 7): Promise<AdminSalesTrendPoint[]> {
+    const trend: AdminSalesTrendPoint[] = [];
     const now = new Date();
-    
-    for (let i = days - 1; i >= 0; i--) {
+    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+    for (let i = days - 1; i >= 0; i -= 1) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
       date.setHours(0, 0, 0, 0);
-      
+
       const nextDate = new Date(date);
       nextDate.setDate(nextDate.getDate() + 1);
-      
-      // 鑾峰彇褰撳ぉ宸插畬鎴愯鍗曠殑鎬婚噾棰?
-      const orders = await prisma.order.findMany({
+
+      const orders: SalesAmountRecord[] = await prisma.order.findMany({
         where: {
           createdAt: {
             gte: date,
             lt: nextDate,
           },
-          status: 'COMPLETED',
+          status: OrderStatus.COMPLETED,
         },
         select: {
           price_snapshot: true,
         },
       });
-      
-      const amount = orders.reduce((sum: number, order: any) => sum + Number(order.price_snapshot), 0);
-      
-      // 格式化日期
-      const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-      const label = i === 0 ? '今天' : weekdays[date.getDay()];
-      
+
+      const amount = orders.reduce(
+        (sum, order) => sum + Number(order.price_snapshot),
+        0
+      );
+
       trend.push({
-        date: label,
+        date: i === 0 ? '今天' : weekdays[date.getDay()],
         amount: Math.round(amount),
       });
     }
-    
+
     return trend;
   }
 
-  /**
-   * 鑾峰彇鐢ㄦ埛澧為暱瓒嬪娍锛堟渶杩慛涓湀锛?
-   */
-  async getUserGrowthTrend(months: number = 6) {
-    const trend = [];
+  async getUserGrowthTrend(months = 6): Promise<AdminUserGrowthTrendPoint[]> {
+    const trend: AdminUserGrowthTrendPoint[] = [];
     const now = new Date();
-    
-    for (let i = months - 1; i >= 0; i--) {
+
+    for (let i = months - 1; i >= 0; i -= 1) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const nextDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      
-      // 鑾峰彇璇ユ湀涔嬪墠鐨勬€荤敤鎴锋暟
-      const totalUsers = await prisma.user.count({
-        where: {
-          createdAt: {
-            lt: nextDate,
+
+      const [users, newUsers] = await Promise.all([
+        prisma.user.count({
+          where: {
+            createdAt: {
+              lt: nextDate,
+            },
           },
-        },
-      });
-      
-      // 鑾峰彇璇ユ湀鏂板鐢ㄦ埛鏁?
-      const newUsers = await prisma.user.count({
-        where: {
-          createdAt: {
-            gte: date,
-            lt: nextDate,
+        }),
+        prisma.user.count({
+          where: {
+            createdAt: {
+              gte: date,
+              lt: nextDate,
+            },
           },
-        },
-      });
-      
+        }),
+      ]);
+
       trend.push({
         month: `${date.getMonth() + 1}月`,
-        users: totalUsers,
+        users,
         newUsers,
       });
     }
-    
+
     return trend;
   }
 
-  /**
-   * 鑾峰彇鎵€鏈夌敤鎴峰垪琛?
-   */
-  async getAllUsers(page: number = 1, pageSize: number = 20, keyword?: string) {
+  async getAllUsers(
+    page = 1,
+    pageSize = 20,
+    keyword?: string
+  ): Promise<AdminUserListResponse> {
     const skip = (page - 1) * pageSize;
-    
-    const where = keyword
+    const where: Prisma.UserWhereInput = keyword
       ? {
           OR: [
             { studentId: { contains: keyword } },
@@ -175,15 +173,7 @@ export class AdminService {
     ]);
 
     return {
-      users: users.map((user: any) => ({
-        id: Number(user.id),
-        studentId: user.studentId,
-        phone: user.phone,
-        role: user.role,
-        enabled: user.enabled,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      })),
+      users: users.map(mapAdminUser),
       total,
       page,
       pageSize,
@@ -191,10 +181,7 @@ export class AdminService {
     };
   }
 
-  /**
-   * 鍒囨崲鐢ㄦ埛鍚敤鐘舵€?
-   */
-  async toggleUserStatus(userId: number) {
+  async toggleUserStatus(userId: number): Promise<AdminUserStatusUpdate> {
     const user = await prisma.user.findUnique({
       where: { id: BigInt(userId) },
     });
@@ -203,7 +190,6 @@ export class AdminService {
       throw new NotFoundException('用户不存在');
     }
 
-    // 涓嶅厑璁哥鐢ㄧ鐞嗗憳璐︽埛
     if (user.role === 'ADMIN') {
       throw new BusinessException('不能禁用管理员账户');
     }
@@ -220,22 +206,22 @@ export class AdminService {
     };
   }
 
-  /**
-   * 鑾峰彇鎵€鏈夊晢鍝佸垪琛?
-   */
-  async getAllProducts(page: number = 1, pageSize: number = 20, keyword?: string) {
+  async getAllProducts(
+    page = 1,
+    pageSize = 20,
+    keyword?: string
+  ): Promise<AdminProductListResponse> {
     const skip = (page - 1) * pageSize;
-    
-    const where = keyword
+    const where: Prisma.ProductWhereInput = keyword
       ? {
-          status: { not: 'DELETED' }, // 鎺掗櫎宸插垹闄ょ殑鍟嗗搧
+          status: { not: 'DELETED' },
           OR: [
             { title: { contains: keyword } },
             { description: { contains: keyword } },
           ],
         }
       : {
-          status: { not: 'DELETED' }, // 鎺掗櫎宸插垹闄ょ殑鍟嗗搧
+          status: { not: 'DELETED' },
         };
 
     const [products, total] = await Promise.all([
@@ -255,17 +241,7 @@ export class AdminService {
     ]);
 
     return {
-      products: products.map((product: any) => ({
-        id: Number(product.id),
-        sellerId: Number(product.sellerId),
-        title: product.title,
-        description: product.description,
-        price: Number(product.price),
-        status: product.status,
-        viewCount: Number(product.viewCount),
-        imageUrl: product.images[0]?.url,
-        createdAt: product.createdAt,
-      })),
+      products: products.map(mapAdminProduct),
       total,
       page,
       pageSize,
@@ -273,10 +249,7 @@ export class AdminService {
     };
   }
 
-  /**
-   * 鍒犻櫎鍟嗗搧
-   */
-  async deleteProduct(productId: number) {
+  async deleteProduct(productId: number): Promise<{ success: true }> {
     const product = await prisma.product.findUnique({
       where: { id: BigInt(productId) },
     });
@@ -292,13 +265,13 @@ export class AdminService {
     return { success: true };
   }
 
-  /**
-   * 鑾峰彇鎵€鏈夎鍗曞垪琛?
-   */
-  async getAllOrders(page: number = 1, pageSize: number = 20, keyword?: string) {
+  async getAllOrders(
+    page = 1,
+    pageSize = 20,
+    keyword?: string
+  ): Promise<AdminOrderListResponse> {
     const skip = (page - 1) * pageSize;
-    
-    const where = keyword ? {} : {};
+    const where: Prisma.OrderWhereInput = keyword ? {} : {};
 
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
@@ -311,19 +284,7 @@ export class AdminService {
     ]);
 
     return {
-      orders: orders.map((order: any) => ({
-        id: Number(order.id),
-        orderNo: (order as any).order_no || ('ORD' + order.id),
-        buyerId: Number(order.buyerId),
-        sellerId: Number(order.sellerId),
-        productId: Number(order.productId),
-        status: order.status,
-        priceSnapshot: Number(order.price_snapshot),
-        meetLocation: order.meet_location,
-        meetTime: order.meet_time,
-        createdAt: order.createdAt,
-        updatedAt: order.updatedAt,
-      })),
+      orders: orders.map(mapAdminOrder),
       total,
       page,
       pageSize,
@@ -331,35 +292,23 @@ export class AdminService {
     };
   }
 
-  /**
-   * 鑾峰彇鎵€鏈夊垎绫?
-   */
-  async getAllCategories() {
+  async getAllCategories(): Promise<AdminCategoryListItem[]> {
     const categories = await prisma.category.findMany({
       orderBy: { id: 'asc' },
     });
 
-    // 鑾峰彇姣忎釜鍒嗙被鐨勫晢鍝佹暟閲?
-    const categoriesWithCount = await Promise.all(
-      categories.map(async (category: any) => {
+    return Promise.all(
+      categories.map(async (category) => {
         const productCount = await prisma.product.count({
           where: { categoryId: category.id },
         });
-        return {
-          id: Number(category.id),
-          name: category.name,
-          productCount,
-        };
+
+        return mapAdminCategory(category, productCount);
       })
     );
-
-    return categoriesWithCount;
   }
 
-  /**
-   * 鍒涘缓鍒嗙被
-   */
-  async createCategory(name: string) {
+  async createCategory(name: string): Promise<Pick<AdminCategoryListItem, 'id' | 'name'>> {
     const existing = await prisma.category.findUnique({
       where: { name },
     });
@@ -378,10 +327,7 @@ export class AdminService {
     };
   }
 
-  /**
-   * 鍒犻櫎鍒嗙被
-   */
-  async deleteCategory(categoryId: number) {
+  async deleteCategory(categoryId: number): Promise<{ success: true }> {
     const category = await prisma.category.findUnique({
       where: { id: BigInt(categoryId) },
     });
@@ -390,13 +336,12 @@ export class AdminService {
       throw new NotFoundException('分类不存在');
     }
 
-    // 妫€鏌ユ槸鍚︽湁鍟嗗搧浣跨敤璇ュ垎绫?
     const productCount = await prisma.product.count({
       where: { categoryId: BigInt(categoryId) },
     });
 
     if (productCount > 0) {
-      throw new BusinessException('该分类下还有 ' + productCount + ' 个商品，无法删除');
+      throw new BusinessException(`该分类下还有 ${productCount} 个商品，无法删除`);
     }
 
     await prisma.category.delete({

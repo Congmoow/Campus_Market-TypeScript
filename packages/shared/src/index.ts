@@ -37,9 +37,6 @@ export interface UserProfile {
   major?: string;
   grade?: string;
   bio?: string;
-  // Legacy aliases kept temporarily to avoid breaking the current frontend.
-  nickname?: string;
-  location?: string;
 }
 
 export interface User {
@@ -88,10 +85,6 @@ export interface UpdateProfileRequest {
   grade?: string;
   bio?: string;
   avatarUrl?: string;
-  // Legacy aliases kept temporarily to avoid breaking the current frontend.
-  nickname?: string;
-  location?: string;
-  avatar?: string;
 }
 
 export interface ResetPasswordRequest {
@@ -276,4 +269,105 @@ export interface PageResponse<T> {
 export interface UploadResponse {
   url: string;
   filename: string;
+}
+
+export interface AdminOrderStatusDistributionItem {
+  status: OrderStatus | string;
+  count: number;
+}
+
+export interface AdminSalesTrendPoint {
+  date: string;
+  amount: number;
+}
+
+export interface AdminUserGrowthTrendPoint {
+  month: string;
+  users: number;
+  newUsers: number;
+}
+
+export interface AdminStatistics {
+  totalUsers: number;
+  totalProducts: number;
+  totalOrders: number;
+  activeUsers: number;
+  todayUsers: number;
+  todayProducts: number;
+  todayOrders: number;
+  orderStatusDistribution: AdminOrderStatusDistributionItem[];
+  salesTrend: AdminSalesTrendPoint[];
+  userGrowthTrend: AdminUserGrowthTrendPoint[];
+}
+
+export interface AdminUserListItem {
+  id: number;
+  studentId: string;
+  phone: string | null;
+  role: string;
+  enabled: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface AdminUserStatusUpdate {
+  id: number;
+  studentId: string;
+  enabled: boolean;
+}
+
+export interface AdminUserListResponse {
+  users: AdminUserListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface AdminProductListItem {
+  id: number;
+  sellerId: number;
+  title: string;
+  description: string;
+  price: number;
+  status: ProductStatus | string;
+  viewCount: number;
+  imageUrl?: string;
+  createdAt: Date | string;
+}
+
+export interface AdminProductListResponse {
+  products: AdminProductListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface AdminOrderListItem {
+  id: number;
+  orderNo: string;
+  buyerId: number;
+  sellerId: number;
+  productId: number;
+  status: OrderStatus | string;
+  priceSnapshot: number;
+  meetLocation?: string | null;
+  meetTime?: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface AdminOrderListResponse {
+  orders: AdminOrderListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface AdminCategoryListItem {
+  id: number;
+  name: string;
+  productCount: number;
 }

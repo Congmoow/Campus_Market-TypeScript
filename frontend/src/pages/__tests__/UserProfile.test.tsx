@@ -119,7 +119,7 @@ describe('UserProfile', () => {
 
     render(<UserProfile />);
 
-    const contactButton = (await screen.findByText('联系Ta')).closest('button') as HTMLButtonElement;
+    const contactButton = (await screen.findByText('联系 Ta')).closest('button') as HTMLButtonElement;
     await user.click(contactButton);
 
     await waitFor(() => {
@@ -225,7 +225,7 @@ describe('UserProfile', () => {
     });
     await screen.findByText('Seller Product');
 
-    const soldTab = screen.getByText(/已卖出|宸插崠鍑?/).closest('div') as HTMLDivElement;
+    const soldTab = screen.getByText(/已卖出/).closest('div') as HTMLDivElement;
     await user.click(soldTab);
     await act(async () => {
       await flushAsync();

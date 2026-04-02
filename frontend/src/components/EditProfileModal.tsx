@@ -21,7 +21,6 @@ interface EditProfileModalProps {
       major?: string;
       grade?: string;
       campus?: string;
-      location?: string;
       bio?: string;
       avatarUrl?: string;
     };
@@ -78,7 +77,6 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
         campus:
           currentProfile.campus ||
           readProfileValue(currentProfile, 'campus') ||
-          readProfileValue(currentProfile, 'location') ||
           '',
         bio: currentProfile.bio || readProfileValue(currentProfile, 'bio') || '',
         avatarUrl:

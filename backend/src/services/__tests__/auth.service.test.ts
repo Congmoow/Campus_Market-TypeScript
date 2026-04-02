@@ -90,7 +90,6 @@ describe('AuthService', () => {
       expect(result.user.studentId).toBe('20240001');
       expect(result.user.phone).toBe('13800138000');
       expect(result.user.profile?.name).toBe('Test User');
-      expect(result.user.profile?.nickname).toBe('Test User');
       expect(generateToken).toHaveBeenCalledWith(
         expect.objectContaining({
           phone: '13800138000',
@@ -224,7 +223,6 @@ describe('AuthService', () => {
       expect(result.token).toBe('mock-jwt-token');
       expect(result.user.studentId).toBe('20240001');
       expect(result.user.profile?.name).toBe('Test User');
-      expect(result.user.profile?.nickname).toBe('Test User');
       expect(prisma.userProfile.findUnique).toHaveBeenCalledWith({
         where: { userId: BigInt(1) },
       });
@@ -297,7 +295,6 @@ describe('AuthService', () => {
       expect(result.id).toBe(1);
       expect(result.studentId).toBe('20240001');
       expect(result.profile?.name).toBe('Test User');
-      expect(result.profile?.nickname).toBe('Test User');
       expect(prisma.userProfile.findUnique).toHaveBeenCalledWith({
         where: { userId: BigInt(1) },
       });

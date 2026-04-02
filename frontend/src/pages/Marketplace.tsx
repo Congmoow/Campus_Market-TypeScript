@@ -4,6 +4,7 @@ import Slider from 'rc-slider';
 import 'rc-slider/assets/index.css';
 import type { ProductListItem } from '@campus-market/shared';
 import { productApi } from '../api';
+import { getUserDisplayName } from '../lib/user-display';
 import AuthModal from '../components/AuthModal';
 import Navbar from '../components/Navbar';
 import ProductCard from '../components/ProductCard';
@@ -66,11 +67,7 @@ const mapToCardProduct = (product: ProductListItem): CardProduct => ({
   location: product.location || '校内',
   timeAgo: formatTimeAgo(product.createdAt),
   seller: {
-    name:
-      product.seller?.profile?.name ||
-      product.seller?.profile?.nickname ||
-      product.seller?.studentId ||
-      '同学',
+    name: getUserDisplayName(product.seller, '同学'),
     avatar:
       product.seller?.avatar ||
       `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,

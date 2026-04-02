@@ -28,8 +28,6 @@ export function mapUserProfile(
     major: profile.major || undefined,
     grade: profile.grade || undefined,
     bio: profile.bio || undefined,
-    nickname: profile.name || undefined,
-    location: profile.campus || undefined,
   };
 }
 

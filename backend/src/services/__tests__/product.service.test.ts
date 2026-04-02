@@ -207,7 +207,7 @@ describe('ProductService', () => {
       expect(result.category).toBeDefined();
     });
 
-    it('should expose seller nickname as a compatibility alias', async () => {
+    it('should expose seller profile fields with canonical name and campus semantics', async () => {
       const mockProduct = {
         id: BigInt(1),
         title: 'Product 1',
@@ -246,7 +246,7 @@ describe('ProductService', () => {
       const result = await productService.getProductDetail(1);
 
       expect(result.seller.profile?.name).toBe('Test User');
-      expect(result.seller.profile?.nickname).toBe('Test User');
+      expect(result.seller.profile?.campus).toBe('下沙校区');
       expect(result.seller.phone).toBe('13800138000');
     });
 

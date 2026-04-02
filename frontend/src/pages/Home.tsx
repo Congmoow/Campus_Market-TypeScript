@@ -7,6 +7,7 @@ import { Zap, Shield, RefreshCw, Clock4 } from 'lucide-react';
 import { Logout } from '@icon-park/react';
 import { Link } from 'react-router-dom';
 import { productApi } from '../api';
+import { getUserDisplayName } from '../lib/user-display';
 import type { ProductListItem } from '@campus-market/shared';
 import type { LucideIcon } from 'lucide-react';
 
@@ -79,11 +80,7 @@ const mapToCardProduct = (product: ProductListItem): CardProduct => {
     location: product.location || '校内',
     timeAgo: formatTime(createdAt),
     seller: {
-      name:
-        product.seller?.profile?.name ||
-        product.seller?.profile?.nickname ||
-        product.seller?.studentId ||
-        '同学',
+      name: getUserDisplayName(product.seller, '同学'),
       avatar:
         product.seller?.avatar ||
         `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,
