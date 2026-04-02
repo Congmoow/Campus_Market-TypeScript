@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from 'react';
 import type { ApiResponse, AuthTokenPayload, User } from '@campus-market/shared';
+import request, { configureHttpClientAuth } from './http';
 
 export const AUTH_CHANGE_EVENT = 'auth:changed';
 
-const AUTH_ME_ENDPOINT = '/api/auth/me';
+const AUTH_ME_ENDPOINT = '/auth/me';
 const TOKEN_STORAGE_KEY = 'token';
 const USER_STORAGE_KEY = 'user';
 
@@ -60,19 +61,13 @@ function setStoredToken(token: string): void {
 }
 
 async function fetchCurrentSessionUser(token: string): Promise<User | null> {
-  const response = await fetch(AUTH_ME_ENDPOINT, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    // Keep credentials enabled so the same bootstrap path can survive a future cookie-based upgrade.
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
+  if (!token) {
     return null;
   }
 
-  const payload = (await response.json()) as ApiResponse<User>;
+  const payload = await request.get<ApiResponse<User>>(AUTH_ME_ENDPOINT, {
+    skipAuthFailureHandler: true,
+  });
   if (!payload.success || !payload.data) {
     return null;
   }
@@ -259,3 +254,10 @@ export function isAuthenticated(): boolean {
 export function logout(): void {
   clearAuthState('logout');
 }
+
+configureHttpClientAuth({
+  getAccessToken: getStoredToken,
+  onUnauthorized: () => {
+    clearAuthState('unauthorized');
+  },
+});

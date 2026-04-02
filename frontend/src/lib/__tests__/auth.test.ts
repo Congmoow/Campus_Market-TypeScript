@@ -80,33 +80,25 @@ describe('auth helpers', () => {
     };
 
     localStorage.setItem('token', 'token-123');
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        success: true,
-        data: currentUser,
-      }),
+    const get = vi.fn().mockResolvedValue({
+      success: true,
+      data: currentUser,
     });
-    vi.stubGlobal('fetch', fetchMock);
-    Object.defineProperty(window, 'fetch', {
-      value: fetchMock,
-      configurable: true,
-    });
+    vi.doMock('../http', () => ({
+      configureHttpClientAuth: vi.fn(),
+      default: {
+        get,
+      },
+    }));
 
     const { getAuthSessionState, getCurrentUser, isAuthenticated, restoreAuthSession } =
       await import('../auth');
 
     await expect(restoreAuthSession()).resolves.toEqual(currentUser);
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/auth/me',
-      expect.objectContaining({
-        credentials: 'include',
-        headers: {
-          Authorization: 'Bearer token-123',
-        },
-      }),
-    );
+    expect(get).toHaveBeenCalledWith('/auth/me', {
+      skipAuthFailureHandler: true,
+    });
     expect(getCurrentUser()).toMatchObject({
       id: 1,
       role: 'ADMIN',
@@ -129,25 +121,24 @@ describe('auth helpers', () => {
       }),
     );
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-        json: async () => ({
-          success: false,
-        }),
-      }),
-    );
-    Object.defineProperty(window, 'fetch', {
-      value: globalThis.fetch,
-      configurable: true,
+    const get = vi.fn().mockResolvedValue({
+      success: false,
+      message: 'unauthorized',
     });
+    vi.doMock('../http', () => ({
+      configureHttpClientAuth: vi.fn(),
+      default: {
+        get,
+      },
+    }));
 
     const { getAuthSessionState, restoreAuthSession } = await import('../auth');
 
     await expect(restoreAuthSession()).resolves.toBeNull();
 
+    expect(get).toHaveBeenCalledWith('/auth/me', {
+      skipAuthFailureHandler: true,
+    });
     expect(localStorage.getItem('token') ?? null).toBeNull();
     expect(localStorage.getItem('user') ?? null).toBeNull();
     expect(getAuthSessionState()).toMatchObject({
