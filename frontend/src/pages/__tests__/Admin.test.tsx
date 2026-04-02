@@ -168,9 +168,10 @@ describe('Admin page', () => {
     render(<Admin />);
 
     expect(await screen.findByRole('heading', { name: '管理后台' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '数据概览' })).toBeInTheDocument();
-    expect(screen.getByText('数码产品')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '数据概览' })).toBeInTheDocument();
+    expect(await screen.findByText('数码产品')).toBeInTheDocument();
     expect(screen.getByText('书籍教材')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /用户管理/i }));
 

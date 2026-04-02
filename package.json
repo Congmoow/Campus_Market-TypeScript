@@ -8,6 +8,7 @@
     "packages/shared"
   ],
   "scripts": {
+    "prepare:backend-artifacts": "npm run build:shared && npm --workspace campus-market-backend run prisma:generate",
     "dev": "concurrently -n \"backend,frontend\" -c \"yellow,cyan\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
@@ -28,6 +29,7 @@
     "test:frontend": "cd frontend && npm test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "postinstall": "npm run prepare:backend-artifacts",
     "prepare": "husky"
   },
   "lint-staged": {
