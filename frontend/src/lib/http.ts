@@ -2,38 +2,29 @@ import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } fro
 
 type UnauthorizedHandler = (error: AxiosError) => void | Promise<void>;
 type AccessTokenGetter = () => string | null;
+type AccessTokenRefresher = () => Promise<string | null>;
 
 export interface HttpRequestConfig<D = unknown> extends AxiosRequestConfig<D> {
   skipAuthFailureHandler?: boolean;
   skipAuthToken?: boolean;
+  skipAuthRefresh?: boolean;
+  _retry?: boolean;
 }
 
 interface HttpClientAuthBridge {
   getAccessToken: AccessTokenGetter;
+  refreshAccessToken: AccessTokenRefresher;
   onUnauthorized: UnauthorizedHandler;
 }
 
-const defaultAccessTokenGetter: AccessTokenGetter = () => {
-  if (typeof window === 'undefined') {
-    return null;
-  }
+const defaultAccessTokenGetter: AccessTokenGetter = () => null;
 
-  return localStorage.getItem('token');
-};
-
+let refreshAccessTokenPromise: Promise<string | null> | null = null;
 let httpClientAuthBridge: HttpClientAuthBridge = {
   getAccessToken: defaultAccessTokenGetter,
+  refreshAccessToken: async () => null,
   onUnauthorized: async () => undefined,
 };
-
-function resolveAccessToken(): string | null {
-  return httpClientAuthBridge.getAccessToken();
-}
-
-async function handleUnauthorizedResponse(error: AxiosError): Promise<void> {
-  // Future refresh-token support should hook in here before falling back to session cleanup.
-  await httpClientAuthBridge.onUnauthorized(error);
-}
 
 type InternalHttpRequestConfig = InternalAxiosRequestConfig & HttpRequestConfig;
 
@@ -45,6 +36,33 @@ const instance = axios.create({
     Accept: 'application/json',
   },
 });
+
+function isRefreshRequest(config: HttpRequestConfig): boolean {
+  return typeof config.url === 'string' && config.url.includes('/auth/refresh');
+}
+
+function resolveAccessToken(): string | null {
+  return httpClientAuthBridge.getAccessToken();
+}
+
+async function refreshAccessTokenOnce(): Promise<string | null> {
+  if (refreshAccessTokenPromise) {
+    return refreshAccessTokenPromise;
+  }
+
+  refreshAccessTokenPromise = httpClientAuthBridge
+    .refreshAccessToken()
+    .catch(() => null)
+    .finally(() => {
+      refreshAccessTokenPromise = null;
+    });
+
+  return refreshAccessTokenPromise;
+}
+
+async function retryRequest<T = unknown>(config: HttpRequestConfig): Promise<T> {
+  return instance.request<unknown, T>(config);
+}
 
 instance.interceptors.request.use(
   (config: InternalHttpRequestConfig) => {
@@ -77,16 +95,42 @@ instance.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const config = (error.config ?? {}) as HttpRequestConfig;
-    if (error.response?.status === 401 && !config.skipAuthFailureHandler) {
-      await handleUnauthorizedResponse(error);
+
+    if (error.response?.status !== 401 || config.skipAuthFailureHandler) {
+      return Promise.reject(error);
     }
 
+    if (config._retry) {
+      await httpClientAuthBridge.onUnauthorized(error);
+      return Promise.reject(error);
+    }
+
+    if (!config.skipAuthRefresh && !isRefreshRequest(config)) {
+      const refreshedAccessToken = await refreshAccessTokenOnce();
+      if (refreshedAccessToken) {
+        const retryConfig: HttpRequestConfig = {
+          ...config,
+          _retry: true,
+          headers: {
+            ...(config.headers as Record<string, string> | undefined),
+            Authorization: `Bearer ${refreshedAccessToken}`,
+          },
+        };
+
+        return request.request(retryConfig);
+      }
+    }
+
+    await httpClientAuthBridge.onUnauthorized(error);
     return Promise.reject(error);
   },
 );
 
 const request = {
   interceptors: instance.interceptors,
+  request<T>(config: HttpRequestConfig): Promise<T> {
+    return retryRequest<T>(config);
+  },
   get<T>(url: string, config?: HttpRequestConfig): Promise<T> {
     return instance.get<unknown, T>(url, config);
   },
@@ -105,10 +149,12 @@ const request = {
 };
 
 export function configureHttpClientAuth(
-  bridge: Partial<HttpClientAuthBridge> & Pick<HttpClientAuthBridge, 'getAccessToken'>,
+  bridge: Partial<HttpClientAuthBridge> &
+    Pick<HttpClientAuthBridge, 'getAccessToken' | 'refreshAccessToken'>,
 ): void {
   httpClientAuthBridge = {
     getAccessToken: bridge.getAccessToken,
+    refreshAccessToken: bridge.refreshAccessToken,
     onUnauthorized: bridge.onUnauthorized ?? httpClientAuthBridge.onUnauthorized,
   };
 }

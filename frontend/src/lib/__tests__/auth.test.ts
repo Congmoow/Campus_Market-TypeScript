@@ -63,7 +63,7 @@ describe('auth helpers', () => {
     expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ reason: 'logout' });
   });
 
-  it('restores the authenticated session from /api/auth/me when a token exists', async () => {
+  it('restores the authenticated session through refresh bootstrap and /api/auth/me', async () => {
     const currentUser = {
       id: 1,
       studentId: '20230001',
@@ -79,7 +79,13 @@ describe('auth helpers', () => {
       },
     };
 
-    localStorage.setItem('token', 'token-123');
+    localStorage.setItem('token', 'legacy-token');
+    const post = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        token: 'fresh-access-token',
+      },
+    });
     const get = vi.fn().mockResolvedValue({
       success: true,
       data: currentUser,
@@ -87,6 +93,7 @@ describe('auth helpers', () => {
     vi.doMock('../http', () => ({
       configureHttpClientAuth: vi.fn(),
       default: {
+        post,
         get,
       },
     }));
@@ -96,14 +103,20 @@ describe('auth helpers', () => {
 
     await expect(restoreAuthSession()).resolves.toEqual(currentUser);
 
+    expect(post).toHaveBeenCalledWith('/auth/refresh', undefined, {
+      skipAuthFailureHandler: true,
+      skipAuthRefresh: true,
+      skipAuthToken: true,
+    });
     expect(get).toHaveBeenCalledWith('/auth/me', {
       skipAuthFailureHandler: true,
     });
     expect(getCurrentUser()).toMatchObject({
       id: 1,
       role: 'ADMIN',
-      token: 'token-123',
+      token: 'fresh-access-token',
     });
+    expect(localStorage.getItem('token') ?? null).toBeNull();
     expect(getAuthSessionState()).toMatchObject({
       status: 'authenticated',
       user: currentUser,
@@ -111,7 +124,7 @@ describe('auth helpers', () => {
     expect(isAuthenticated()).toBe(true);
   });
 
-  it('clears stale local auth data when /api/auth/me rejects the token', async () => {
+  it('clears auth state when refresh bootstrap fails', async () => {
     localStorage.setItem('token', 'stale-token');
     localStorage.setItem(
       'user',
@@ -121,6 +134,7 @@ describe('auth helpers', () => {
       }),
     );
 
+    const post = vi.fn().mockRejectedValue(new Error('unauthorized'));
     const get = vi.fn().mockResolvedValue({
       success: false,
       message: 'unauthorized',
@@ -128,6 +142,7 @@ describe('auth helpers', () => {
     vi.doMock('../http', () => ({
       configureHttpClientAuth: vi.fn(),
       default: {
+        post,
         get,
       },
     }));
@@ -136,14 +151,36 @@ describe('auth helpers', () => {
 
     await expect(restoreAuthSession()).resolves.toBeNull();
 
-    expect(get).toHaveBeenCalledWith('/auth/me', {
+    expect(post).toHaveBeenCalledWith('/auth/refresh', undefined, {
       skipAuthFailureHandler: true,
+      skipAuthRefresh: true,
+      skipAuthToken: true,
     });
+    expect(get).not.toHaveBeenCalled();
     expect(localStorage.getItem('token') ?? null).toBeNull();
     expect(localStorage.getItem('user') ?? null).toBeNull();
     expect(getAuthSessionState()).toMatchObject({
       status: 'unauthenticated',
       user: null,
+    });
+  });
+
+  it('does not persist the access token in localStorage when setting the auth session', async () => {
+    const { getCurrentUser, setAuthSession } = await import('../auth');
+
+    setAuthSession('memory-only-token', {
+      id: 3,
+      studentId: '20240003',
+      role: 'USER',
+      phone: null,
+      createdAt: '2026-04-02T00:00:00.000Z',
+      updatedAt: '2026-04-02T00:00:00.000Z',
+    });
+
+    expect(localStorage.getItem('token') ?? null).toBeNull();
+    expect(getCurrentUser()).toMatchObject({
+      id: 3,
+      token: 'memory-only-token',
     });
   });
 });

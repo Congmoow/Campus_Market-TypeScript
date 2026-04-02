@@ -1,10 +1,17 @@
 import { useSyncExternalStore } from 'react';
-import type { ApiResponse, AuthTokenPayload, User } from '@campus-market/shared';
+import type {
+  AccessTokenResponse,
+  ApiResponse,
+  AuthTokenPayload,
+  User,
+} from '@campus-market/shared';
 import request, { configureHttpClientAuth } from './http';
 
 export const AUTH_CHANGE_EVENT = 'auth:changed';
 
 const AUTH_ME_ENDPOINT = '/auth/me';
+const AUTH_REFRESH_ENDPOINT = '/auth/refresh';
+const AUTH_LOGOUT_ENDPOINT = '/auth/logout';
 const TOKEN_STORAGE_KEY = 'token';
 const USER_STORAGE_KEY = 'user';
 
@@ -20,10 +27,12 @@ export interface AuthSessionState {
 
 const sessionListeners = new Set<SessionListener>();
 
+let accessToken: string | null = null;
 let restoreSessionPromise: Promise<User | null> | null = null;
-let authSessionState: AuthSessionState = getStoredToken()
-  ? { status: 'loading', user: null }
-  : { status: 'unauthenticated', user: null };
+let authSessionState: AuthSessionState =
+  typeof window === 'undefined'
+    ? { status: 'unauthenticated', user: null }
+    : { status: 'loading', user: null };
 
 function emitSessionChange(): void {
   sessionListeners.forEach((listener) => listener());
@@ -34,15 +43,11 @@ function setSessionState(nextState: AuthSessionState): void {
   emitSessionChange();
 }
 
-function getStoredToken(): string | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
+function getAccessToken(): string | null {
+  return accessToken;
 }
 
-function clearStoredAuthData(): void {
+function clearLegacyStoredAuthData(): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -51,20 +56,44 @@ function clearStoredAuthData(): void {
   localStorage.removeItem(USER_STORAGE_KEY);
 }
 
-function setStoredToken(token: string): void {
-  if (typeof window === 'undefined') {
+function setAccessToken(token: string | null): void {
+  accessToken = token;
+  if (!token) {
+    clearLegacyStoredAuthData();
     return;
   }
 
-  localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  localStorage.removeItem(USER_STORAGE_KEY);
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
 }
 
-async function fetchCurrentSessionUser(token: string): Promise<User | null> {
-  if (!token) {
+async function refreshAccessToken(): Promise<string | null> {
+  try {
+    const payload = await request.post<ApiResponse<AccessTokenResponse>>(
+      AUTH_REFRESH_ENDPOINT,
+      undefined,
+      {
+        skipAuthFailureHandler: true,
+        skipAuthRefresh: true,
+        skipAuthToken: true,
+      },
+    );
+
+    if (!payload.success || !payload.data?.token) {
+      setAccessToken(null);
+      return null;
+    }
+
+    setAccessToken(payload.data.token);
+    return payload.data.token;
+  } catch {
+    setAccessToken(null);
     return null;
   }
+}
 
+async function fetchCurrentSessionUser(): Promise<User | null> {
   const payload = await request.get<ApiResponse<User>>(AUTH_ME_ENDPOINT, {
     skipAuthFailureHandler: true,
   });
@@ -73,28 +102,6 @@ async function fetchCurrentSessionUser(token: string): Promise<User | null> {
   }
 
   return payload.data;
-}
-
-function handleStorageAuthChange(event: StorageEvent): void {
-  if (event.storageArea !== localStorage) {
-    return;
-  }
-
-  if (event.key && event.key !== TOKEN_STORAGE_KEY && event.key !== USER_STORAGE_KEY) {
-    return;
-  }
-
-  const token = getStoredToken();
-  if (!token) {
-    setSessionState({ status: 'unauthenticated', user: null });
-    return;
-  }
-
-  void restoreAuthSession();
-}
-
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', handleStorageAuthChange);
 }
 
 export function parseJwt(token: string): AuthTokenPayload | null {
@@ -151,42 +158,38 @@ export function useAuthSession(): AuthSessionState {
 }
 
 export async function restoreAuthSession(): Promise<User | null> {
-  const token = getStoredToken();
-  if (!token) {
-    clearStoredAuthData();
-    setSessionState({ status: 'unauthenticated', user: null });
-    return null;
-  }
-
   if (restoreSessionPromise) {
     return restoreSessionPromise;
   }
 
   setSessionState({ status: 'loading', user: null });
 
-  restoreSessionPromise = fetchCurrentSessionUser(token)
-    .then((user) => {
-      if (!user) {
+  restoreSessionPromise = (async () => {
+    if (!getAccessToken()) {
+      const refreshedAccessToken = await refreshAccessToken();
+      if (!refreshedAccessToken) {
         clearAuthState('invalid-session');
         return null;
       }
+    }
 
-      setSessionState({ status: 'authenticated', user });
-      return user;
-    })
-    .catch(() => {
+    const user = await fetchCurrentSessionUser().catch(() => null);
+    if (!user) {
       clearAuthState('invalid-session');
       return null;
-    })
-    .finally(() => {
-      restoreSessionPromise = null;
-    });
+    }
+
+    setSessionState({ status: 'authenticated', user });
+    return user;
+  })().finally(() => {
+    restoreSessionPromise = null;
+  });
 
   return restoreSessionPromise;
 }
 
 export function clearAuthState(reason = 'logout'): void {
-  clearStoredAuthData();
+  setAccessToken(null);
   setSessionState({ status: 'unauthenticated', user: null });
   dispatchAuthChanged(reason);
 }
@@ -210,7 +213,7 @@ export function getStoredUser<T = StoredUser>(): T | null {
 }
 
 export function setAuthSession(token: string, user: User): void {
-  setStoredToken(token);
+  setAccessToken(token);
   setSessionState({
     status: 'authenticated',
     user,
@@ -219,7 +222,7 @@ export function setAuthSession(token: string, user: User): void {
 }
 
 export function updateAuthSessionUser(user: User): void {
-  if (!getStoredToken()) {
+  if (!getAccessToken()) {
     return;
   }
 
@@ -230,7 +233,7 @@ export function updateAuthSessionUser(user: User): void {
 }
 
 export function getCurrentUser(): (User & { token: string }) | null {
-  const token = getStoredToken();
+  const token = getAccessToken();
   const { user } = authSessionState;
 
   if (!token || !user) {
@@ -251,12 +254,21 @@ export function isAuthenticated(): boolean {
   return authSessionState.status === 'authenticated';
 }
 
-export function logout(): void {
-  clearAuthState('logout');
+export async function logout(): Promise<void> {
+  try {
+    await request.post(AUTH_LOGOUT_ENDPOINT, undefined, {
+      skipAuthFailureHandler: true,
+      skipAuthRefresh: true,
+      skipAuthToken: true,
+    });
+  } finally {
+    clearAuthState('logout');
+  }
 }
 
 configureHttpClientAuth({
-  getAccessToken: getStoredToken,
+  getAccessToken,
+  refreshAccessToken,
   onUnauthorized: () => {
     clearAuthState('unauthorized');
   },

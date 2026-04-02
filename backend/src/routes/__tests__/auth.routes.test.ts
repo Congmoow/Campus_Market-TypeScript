@@ -5,6 +5,8 @@ import { errorHandler } from '../../middlewares/error.middleware';
 const mockAuthControllerHandlers = {
   register: jest.fn((req, res) => res.json({ success: true })),
   login: jest.fn((req, res) => res.json({ success: true })),
+  refresh: jest.fn((req, res) => res.json({ success: true })),
+  logout: jest.fn((req, res) => res.json({ success: true })),
   getCurrentUser: jest.fn((req, res) => res.json({ success: true })),
   resetPassword: jest.fn((req, res) => res.json({ success: true })),
 };
@@ -106,5 +108,23 @@ describe('auth route validation', () => {
 
     expect(response.status).toBe(401);
     expect(mockAuthControllerHandlers.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it('routes refresh requests without requiring a bearer token', async () => {
+    const response = await request(app)
+      .post('/auth/refresh')
+      .set('Cookie', ['refreshToken=test-token']);
+
+    expect(response.status).toBe(200);
+    expect(mockAuthControllerHandlers.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes logout requests without requiring a bearer token', async () => {
+    const response = await request(app)
+      .post('/auth/logout')
+      .set('Cookie', ['refreshToken=test-token']);
+
+    expect(response.status).toBe(200);
+    expect(mockAuthControllerHandlers.logout).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,6 +10,7 @@ describe('http client auth handling', () => {
 
     configureHttpClientAuth({
       getAccessToken: () => 'token-123',
+      refreshAccessToken: vi.fn().mockResolvedValue(null),
       onUnauthorized: vi.fn(),
     });
 
@@ -29,6 +30,7 @@ describe('http client auth handling', () => {
 
     configureHttpClientAuth({
       getAccessToken: () => 'token-123',
+      refreshAccessToken: vi.fn().mockResolvedValue(null),
       onUnauthorized,
     });
 
@@ -46,12 +48,47 @@ describe('http client auth handling', () => {
     expect(onUnauthorized).toHaveBeenCalledWith(error);
   });
 
+  it('refreshes once and retries the original request after a 401', async () => {
+    const retryResponse = { success: true };
+    const refreshAccessToken = vi.fn().mockResolvedValue('fresh-token');
+    const { configureHttpClientAuth, default: request } = await import('../http');
+
+    configureHttpClientAuth({
+      getAccessToken: () => 'stale-token',
+      refreshAccessToken,
+      onUnauthorized: vi.fn(),
+    });
+
+    const requestSpy = vi.spyOn(request, 'request').mockResolvedValue(retryResponse);
+    const responseRejected = (request.interceptors.response as any).handlers[0].rejected;
+
+    await expect(
+      responseRejected({
+        response: { status: 401 },
+        config: { url: '/orders/me', headers: {} },
+        message: 'unauthorized',
+      }),
+    ).resolves.toBe(retryResponse);
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
+    expect(requestSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/orders/me',
+        _retry: true,
+        headers: expect.objectContaining({
+          Authorization: 'Bearer fresh-token',
+        }),
+      }),
+    );
+  });
+
   it('does not trigger the global unauthorized handler when explicitly skipped', async () => {
     const onUnauthorized = vi.fn();
     const { configureHttpClientAuth, default: request } = await import('../http');
 
     configureHttpClientAuth({
       getAccessToken: () => 'token-123',
+      refreshAccessToken: vi.fn().mockResolvedValue(null),
       onUnauthorized,
     });
 
@@ -68,5 +105,42 @@ describe('http client auth handling', () => {
     });
 
     expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it('reuses an in-flight refresh request for concurrent 401 responses', async () => {
+    let resolveRefresh: ((value: string | null) => void) | null = null;
+    const refreshAccessToken = vi.fn().mockImplementation(
+      () =>
+        new Promise<string | null>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    const { configureHttpClientAuth, default: request } = await import('../http');
+
+    configureHttpClientAuth({
+      getAccessToken: () => 'stale-token',
+      refreshAccessToken,
+      onUnauthorized: vi.fn(),
+    });
+
+    const requestSpy = vi.spyOn(request, 'request').mockResolvedValue({ success: true });
+    const responseRejected = (request.interceptors.response as any).handlers[0].rejected;
+
+    const first = responseRejected({
+      response: { status: 401 },
+      config: { url: '/orders/1', headers: {} },
+    });
+    const second = responseRejected({
+      response: { status: 401 },
+      config: { url: '/orders/2', headers: {} },
+    });
+
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
+
+    expect(resolveRefresh).not.toBeNull();
+    resolveRefresh!('fresh-token');
+    await Promise.all([first, second]);
+
+    expect(requestSpy).toHaveBeenCalledTimes(2);
   });
 });
