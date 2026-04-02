@@ -2,8 +2,6 @@ import type {
   Order as PrismaOrder,
   Product as PrismaProduct,
   ProductImage as PrismaProductImage,
-  User as PrismaUser,
-  UserProfile as PrismaUserProfile,
 } from '@prisma/client';
 import {
   CreateOrderRequest,
@@ -14,17 +12,8 @@ import {
   ProductWithDetails,
 } from '@campus-market/shared';
 import { prisma } from '../utils/prisma.util';
-import {
-  mapCategory,
-  mapProductBase,
-  mapProductImage,
-  mapUser,
-} from '../mappers/shared.mapper';
-import {
-  BusinessException,
-  ForbiddenException,
-  NotFoundException,
-} from '../utils/error.util';
+import { mapCategory, mapProductBase, mapProductImage, mapUser } from '../mappers/shared.mapper';
+import { BusinessException, ForbiddenException, NotFoundException } from '../utils/error.util';
 
 type ProductRecord = PrismaProduct & {
   images: PrismaProductImage[];
@@ -36,7 +25,7 @@ export class OrderService {
       order: {
         count: typeof prisma.order.count;
       };
-    } = prisma
+    } = prisma,
   ): Promise<string> {
     const now = new Date();
     const dateStr =
@@ -64,7 +53,7 @@ export class OrderService {
     productId: bigint,
     senderId: number,
     receiverId: number,
-    message: string
+    message: string,
   ): Promise<void> {
     try {
       const buyerId = senderId < receiverId ? senderId : receiverId;
@@ -156,7 +145,7 @@ export class OrderService {
 
   private async convertOrder(
     order: PrismaOrder,
-    includeDetails = false
+    includeDetails = false,
   ): Promise<Order | OrderWithDetails> {
     const result = this.mapOrderBase(order);
 
@@ -218,10 +207,7 @@ export class OrderService {
     return detailedOrder;
   }
 
-  async createOrder(
-    buyerId: number,
-    data: CreateOrderRequest
-  ): Promise<OrderWithDetails> {
+  async createOrder(buyerId: number, data: CreateOrderRequest): Promise<OrderWithDetails> {
     if (!data.meetLocation || data.meetLocation.trim().length === 0) {
       throw new BusinessException('交易地点不能为空');
     }
@@ -290,7 +276,7 @@ export class OrderService {
       order.productId,
       buyerId,
       Number(order.sellerId),
-      '我已下单，请尽快确认交易安排'
+      '我已下单，请尽快确认交易安排',
     );
 
     return this.convertOrder(order, true) as Promise<OrderWithDetails>;
@@ -323,7 +309,7 @@ export class OrderService {
     });
 
     return Promise.all(
-      orders.map((order) => this.convertOrder(order, true) as Promise<OrderWithDetails>)
+      orders.map((order) => this.convertOrder(order, true) as Promise<OrderWithDetails>),
     );
   }
 
@@ -338,7 +324,7 @@ export class OrderService {
     });
 
     return Promise.all(
-      orders.map((order) => this.convertOrder(order, true) as Promise<OrderWithDetails>)
+      orders.map((order) => this.convertOrder(order, true) as Promise<OrderWithDetails>),
     );
   }
 
@@ -381,7 +367,7 @@ export class OrderService {
       order.productId,
       userId,
       Number(order.buyerId),
-      '商品已发出，请注意查收'
+      '商品已发出，请注意查收',
     );
 
     return this.getOrderDetail(userId, orderId);
@@ -435,7 +421,7 @@ export class OrderService {
       order.productId,
       userId,
       Number(order.sellerId),
-      '商品已确认收货，交易完成'
+      '商品已确认收货，交易完成',
     );
 
     return this.getOrderDetail(userId, orderId);
@@ -454,10 +440,7 @@ export class OrderService {
       throw new ForbiddenException('无权操作此订单');
     }
 
-    if (
-      order.status === OrderStatus.COMPLETED ||
-      order.status === OrderStatus.CANCELLED
-    ) {
+    if (order.status === OrderStatus.COMPLETED || order.status === OrderStatus.CANCELLED) {
       throw new BusinessException('订单状态不允许取消');
     }
 
@@ -489,16 +472,9 @@ export class OrderService {
     });
 
     const receiverId =
-      Number(order.buyerId) === userId
-        ? Number(order.sellerId)
-        : Number(order.buyerId);
+      Number(order.buyerId) === userId ? Number(order.sellerId) : Number(order.buyerId);
 
-    await this.sendOrderNotification(
-      order.productId,
-      userId,
-      receiverId,
-      '订单已取消'
-    );
+    await this.sendOrderNotification(order.productId, userId, receiverId, '订单已取消');
 
     return this.getOrderDetail(userId, orderId);
   }

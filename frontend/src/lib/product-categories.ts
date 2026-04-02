@@ -12,13 +12,13 @@ type NamedCategory = {
   name: string;
 };
 
-const publishCategoryOrderIndex = new Map(
-  PUBLISH_CATEGORY_ORDER.map((name, index) => [name, index])
+const publishCategoryOrderIndex = new Map<string, number>(
+  PUBLISH_CATEGORY_ORDER.map((name, index) => [name, index]),
 );
 
 export const sortCategoriesByPublishOrder = <T extends NamedCategory>(categories: T[]): T[] => {
   const uniqueCategories = categories.filter(
-    (category, index, list) => list.findIndex((item) => item.name === category.name) === index
+    (category, index, list) => list.findIndex((item) => item.name === category.name) === index,
   );
 
   return [...uniqueCategories].sort((left, right) => {

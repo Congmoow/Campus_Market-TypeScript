@@ -12,12 +12,7 @@ export interface ErrorResponse {
 /**
  * 全局错误处理中间件
  */
-export const errorHandler = (
-  err: Error,
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+export const errorHandler = (err: Error, req: Request, res: Response, next: NextFunction) => {
   // 避免重复发送响应
   if (res.headersSent) {
     return next(err);
@@ -45,10 +40,6 @@ export const errorHandler = (
 /**
  * 404 错误处理中间件
  */
-export const notFoundHandler = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+export const notFoundHandler = (req: Request, res: Response, _next: NextFunction) => {
   res.status(404).json(errorResponse('接口不存在'));
 };

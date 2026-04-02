@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.husky/_/
+backend/uploads/
+frontend/dist/
+frontend/public/uploads/

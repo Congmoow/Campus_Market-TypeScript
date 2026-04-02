@@ -1,10 +1,6 @@
 ﻿import { ProductService } from '../product.service';
 import { prisma } from '../../utils/prisma.util';
-import {
-  BusinessException,
-  NotFoundException,
-  ForbiddenException,
-} from '../../utils/error.util';
+import { BusinessException, NotFoundException, ForbiddenException } from '../../utils/error.util';
 
 // Mock Prisma
 jest.mock('../../utils/prisma.util', () => ({
@@ -144,7 +140,7 @@ describe('ProductService', () => {
           where: expect.objectContaining({
             categoryId: BigInt(1),
           }),
-        })
+        }),
       );
     });
 
@@ -163,7 +159,7 @@ describe('ProductService', () => {
           where: expect.objectContaining({
             OR: expect.any(Array),
           }),
-        })
+        }),
       );
     });
   });
@@ -253,9 +249,7 @@ describe('ProductService', () => {
     it('should throw error if product not found', async () => {
       (prisma.product.findUnique as jest.Mock).mockResolvedValue(null);
 
-      await expect(productService.getProductDetail(999)).rejects.toThrow(
-        NotFoundException
-      );
+      await expect(productService.getProductDetail(999)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -317,12 +311,8 @@ describe('ProductService', () => {
         images: [],
       };
 
-      await expect(
-        productService.createProduct(1, productData)
-      ).rejects.toThrow(BusinessException);
-      await expect(
-        productService.createProduct(1, productData)
-      ).rejects.toThrow('价格必须大于0');
+      await expect(productService.createProduct(1, productData)).rejects.toThrow(BusinessException);
+      await expect(productService.createProduct(1, productData)).rejects.toThrow('价格必须大于0');
     });
 
     it('should throw error for empty title', async () => {
@@ -335,9 +325,7 @@ describe('ProductService', () => {
         images: [],
       };
 
-      await expect(
-        productService.createProduct(1, productData)
-      ).rejects.toThrow(BusinessException);
+      await expect(productService.createProduct(1, productData)).rejects.toThrow(BusinessException);
     });
 
     it('should throw error for non-existent category', async () => {
@@ -352,12 +340,8 @@ describe('ProductService', () => {
 
       (prisma.category.findUnique as jest.Mock).mockResolvedValue(null);
 
-      await expect(
-        productService.createProduct(1, productData)
-      ).rejects.toThrow(BusinessException);
-      await expect(
-        productService.createProduct(1, productData)
-      ).rejects.toThrow('分类不存在');
+      await expect(productService.createProduct(1, productData)).rejects.toThrow(BusinessException);
+      await expect(productService.createProduct(1, productData)).rejects.toThrow('分类不存在');
     });
   });
 
@@ -388,7 +372,7 @@ describe('ProductService', () => {
       });
       (prisma.userProfile.findFirst as jest.Mock).mockResolvedValue(null);
 
-      const result = await productService.updateProduct(1, 1, updateData);
+      await productService.updateProduct(1, 1, updateData);
 
       expect(prisma.product.update).toHaveBeenCalled();
     });
@@ -396,9 +380,9 @@ describe('ProductService', () => {
     it('should throw error if product not found', async () => {
       (prisma.product.findUnique as jest.Mock).mockResolvedValue(null);
 
-      await expect(
-        productService.updateProduct(1, 999, { title: 'New Title' })
-      ).rejects.toThrow(NotFoundException);
+      await expect(productService.updateProduct(1, 999, { title: 'New Title' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw error if user is not the seller', async () => {
@@ -410,9 +394,9 @@ describe('ProductService', () => {
 
       (prisma.product.findUnique as jest.Mock).mockResolvedValue(mockProduct);
 
-      await expect(
-        productService.updateProduct(1, 1, { title: 'New Title' })
-      ).rejects.toThrow(ForbiddenException);
+      await expect(productService.updateProduct(1, 1, { title: 'New Title' })).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('should update category by categoryName', async () => {
@@ -493,7 +477,7 @@ describe('ProductService', () => {
       (prisma.userProfile.findFirst as jest.Mock).mockResolvedValue(null);
 
       await expect(
-        productService.updateProduct(1, 1, { price: 100, originalPrice: null } as any)
+        productService.updateProduct(1, 1, { price: 100, originalPrice: null } as any),
       ).resolves.toBeDefined();
 
       expect(prisma.product.update).toHaveBeenCalledWith({
@@ -532,9 +516,7 @@ describe('ProductService', () => {
 
       (prisma.product.findUnique as jest.Mock).mockResolvedValue(mockProduct);
 
-      await expect(productService.deleteProduct(1, 1)).rejects.toThrow(
-        ForbiddenException
-      );
+      await expect(productService.deleteProduct(1, 1)).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -583,4 +565,3 @@ describe('ProductService', () => {
     });
   });
 });
-

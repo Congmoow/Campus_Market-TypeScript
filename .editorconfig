@@ -1,111 +1,12 @@
-# ==========================================
-# Campus Market - Editor Configuration
-# ==========================================
-# EditorConfig helps maintain consistent coding styles
-# across different editors and IDEs
-# https://editorconfig.org
-
-# ==========================================
-# Top-most EditorConfig file
-# ==========================================
 root = true
 
-# ==========================================
-# Default Settings for All Files
-# ==========================================
 [*]
 charset = utf-8
 end_of_line = lf
+indent_style = space
+indent_size = 2
 insert_final_newline = true
 trim_trailing_whitespace = true
-indent_style = space
-indent_size = 2
 
-# ==========================================
-# JavaScript / TypeScript
-# ==========================================
-[*.{js,jsx,ts,tsx}]
-indent_style = space
-indent_size = 2
-quote_type = single
-
-# ==========================================
-# JSON
-# ==========================================
-[*.json]
-indent_style = space
-indent_size = 2
-
-# ==========================================
-# YAML
-# ==========================================
-[*.{yml,yaml}]
-indent_style = space
-indent_size = 2
-
-# ==========================================
-# Markdown
-# ==========================================
 [*.md]
 trim_trailing_whitespace = false
-max_line_length = off
-
-# ==========================================
-# HTML
-# ==========================================
-[*.html]
-indent_style = space
-indent_size = 2
-
-# ==========================================
-# CSS / SCSS
-# ==========================================
-[*.{css,scss,sass}]
-indent_style = space
-indent_size = 2
-
-# ==========================================
-# Shell Scripts
-# ==========================================
-[*.sh]
-indent_style = space
-indent_size = 2
-end_of_line = lf
-
-# ==========================================
-# Windows Scripts
-# ==========================================
-[*.{bat,cmd,ps1}]
-end_of_line = crlf
-
-# ==========================================
-# Makefile
-# ==========================================
-[Makefile]
-indent_style = tab
-
-# ==========================================
-# Package Files
-# ==========================================
-[package.json]
-indent_style = space
-indent_size = 2
-
-# ==========================================
-# Configuration Files
-# ==========================================
-[*.config.{js,ts}]
-indent_style = space
-indent_size = 2
-
-[tsconfig.json]
-indent_style = space
-indent_size = 2
-
-[.eslintrc]
-indent_style = space
-indent_size = 2
-
-[.prettierrc]
-indent_style = space
-indent_size = 2

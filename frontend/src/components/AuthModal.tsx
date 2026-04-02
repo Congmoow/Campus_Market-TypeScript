@@ -4,7 +4,6 @@ import { User, Lock, Mail, ArrowRight, X, KeyRound, ArrowLeft, Phone } from 'luc
 import { authApi } from '../api';
 import { getUserDisplayName } from '../lib/user-display';
 import { setAuthSession } from '../lib/auth';
-// @ts-ignore - SVG import
 import happyStudent from '../assets/storyset-happy-student.svg';
 
 type AuthMode = 'login' | 'register' | 'forgot';
@@ -104,7 +103,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
         if (res.success) {
           const displayName = getUserDisplayName(
             res.data.user,
-            formData.name || res.data.user.studentId
+            formData.name || res.data.user.studentId,
           );
           setAuthSession(res.data.token, {
             id: res.data.user.id,
@@ -234,10 +233,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
                     : '请填写真实信息以便通过认证'}
               </p>
 
-              {error && <div className="mb-4 p-3 bg-red-50 text-red-500 text-sm rounded-lg">{error}</div>}
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 text-red-500 text-sm rounded-lg">{error}</div>
+              )}
 
               {success && (
-                <div className="mb-4 p-3 bg-green-50 text-green-600 text-sm rounded-lg">{success}</div>
+                <div className="mb-4 p-3 bg-green-50 text-green-600 text-sm rounded-lg">
+                  {success}
+                </div>
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">

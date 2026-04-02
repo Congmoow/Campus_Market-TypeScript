@@ -48,7 +48,7 @@ interface Notification {
   unreadCount: number;
 }
 
-const formatNotificationTime = (isoStr: string | undefined): string => {
+const formatNotificationTime = (isoStr: string | Date | undefined): string => {
   if (!isoStr) return '';
   const d = new Date(isoStr);
   const now = new Date();
@@ -150,10 +150,7 @@ const Navbar: React.FC = () => {
       try {
         const res = await userApi.getProfile(baseUser.id);
         if (res.success && res.data) {
-          const displayName = getUserDisplayName(
-            res.data,
-            getUserDisplayName(baseUser, '同学')
-          );
+          const displayName = getUserDisplayName(res.data, getUserDisplayName(baseUser, '同学'));
           const updatedUser: UserData = {
             ...baseUser,
             name: displayName,
@@ -215,7 +212,9 @@ const Navbar: React.FC = () => {
       <nav
         className={cn(
           'fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b border-transparent',
-          isScrolled ? 'bg-white/80 backdrop-blur-md border-slate-200/50 py-3 shadow-sm' : 'bg-transparent py-5'
+          isScrolled
+            ? 'bg-white/80 backdrop-blur-md border-slate-200/50 py-3 shadow-sm'
+            : 'bg-transparent py-5',
         )}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -227,7 +226,7 @@ const Navbar: React.FC = () => {
               <span
                 className={cn(
                   'text-xl font-bold tracking-tight transition-colors',
-                  isScrolled ? 'text-slate-900' : 'text-slate-800'
+                  isScrolled ? 'text-slate-900' : 'text-slate-800',
                 )}
               >
                 校园<span className="text-blue-600">集市</span>
@@ -284,7 +283,9 @@ const Navbar: React.FC = () => {
 
                       <div className="max-h-80 overflow-y-auto">
                         {notifications.length === 0 ? (
-                          <div className="px-4 py-6 text-xs text-slate-400 text-center">暂无新消息</div>
+                          <div className="px-4 py-6 text-xs text-slate-400 text-center">
+                            暂无新消息
+                          </div>
                         ) : (
                           notifications.map((n) => (
                             <button
@@ -294,19 +295,29 @@ const Navbar: React.FC = () => {
                             >
                               <div className="w-9 h-9 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center text-xs font-medium text-slate-500">
                                 {n.avatarUrl ? (
-                                  <img src={n.avatarUrl} alt={n.fromName} className="w-full h-full object-cover" />
+                                  <img
+                                    src={n.avatarUrl}
+                                    alt={n.fromName}
+                                    className="w-full h-full object-cover"
+                                  />
                                 ) : (
                                   n.fromName?.[0] || '聊'
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="text-sm font-medium text-slate-900 truncate">{n.fromName}</span>
-                                  <span className="text-[11px] text-slate-400 ml-2 whitespace-nowrap">{n.time}</span>
+                                  <span className="text-sm font-medium text-slate-900 truncate">
+                                    {n.fromName}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400 ml-2 whitespace-nowrap">
+                                    {n.time}
+                                  </span>
                                 </div>
                                 <p className="text-xs text-slate-500 truncate">{n.preview}</p>
                               </div>
-                              {n.unreadCount > 0 && <span className="mt-1 w-2 h-2 rounded-full bg-blue-500" />}
+                              {n.unreadCount > 0 && (
+                                <span className="mt-1 w-2 h-2 rounded-full bg-blue-500" />
+                              )}
                             </button>
                           ))
                         )}
@@ -325,7 +336,10 @@ const Navbar: React.FC = () => {
 
               {isLoggedIn ? (
                 <div className="relative group">
-                  <Link to={`/user/${currentUser?.id}`} className="block w-10 h-10 rounded-full overflow-hidden cursor-pointer hover:scale-105 transition-transform">
+                  <Link
+                    to={`/user/${currentUser?.id}`}
+                    className="block w-10 h-10 rounded-full overflow-hidden cursor-pointer hover:scale-105 transition-transform"
+                  >
                     <div className="w-full h-full rounded-full overflow-hidden">
                       <img src={avatarUrl} alt="User" className="w-full h-full object-cover" />
                     </div>
@@ -333,28 +347,44 @@ const Navbar: React.FC = () => {
 
                   <div className="absolute right-0 top-full pt-3 w-72 opacity-0 translate-y-2 invisible group-hover:opacity-100 group-hover:translate-y-0 group-hover:visible transition-all duration-200 ease-out z-50">
                     <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-3 overflow-hidden">
-                      <Link to={`/user/${currentUser?.id}`} className="flex items-center gap-4 px-4 py-4 hover:bg-slate-50 rounded-xl transition-colors mb-2">
+                      <Link
+                        to={`/user/${currentUser?.id}`}
+                        className="flex items-center gap-4 px-4 py-4 hover:bg-slate-50 rounded-xl transition-colors mb-2"
+                      >
                         <div className="w-14 h-14 rounded-full bg-slate-100 overflow-hidden flex-shrink-0">
                           <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-base text-slate-900 truncate">{currentUserDisplayName}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{currentUser?.campus || '下沙校区'}</p>
+                          <p className="font-bold text-base text-slate-900 truncate">
+                            {currentUserDisplayName}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {currentUser?.campus || '下沙校区'}
+                          </p>
                         </div>
                         <ChevronRight size={18} className="text-slate-300 flex-shrink-0" />
                       </Link>
                       <div className="h-px bg-slate-100 my-2" />
-                      <Link to="/my-products" className="menu-item-float flex items-center gap-3 px-4 py-3 text-base text-slate-600 hover:text-blue-600 rounded-xl">
+                      <Link
+                        to="/my-products"
+                        className="menu-item-float flex items-center gap-3 px-4 py-3 text-base text-slate-600 hover:text-blue-600 rounded-xl"
+                      >
                         <Package size={20} />
                         <span className="flex-1">我的发布</span>
                         <ChevronRight size={18} className="text-slate-300" />
                       </Link>
-                      <Link to="/my-orders" className="menu-item-float flex items-center gap-3 px-4 py-3 text-base text-slate-600 hover:text-blue-600 rounded-xl">
+                      <Link
+                        to="/my-orders"
+                        className="menu-item-float flex items-center gap-3 px-4 py-3 text-base text-slate-600 hover:text-blue-600 rounded-xl"
+                      >
                         <ShoppingBag size={20} />
                         <span className="flex-1">我的订单</span>
                         <ChevronRight size={18} className="text-slate-300" />
                       </Link>
-                      <Link to="/my-favorites" className="menu-item-float flex items-center gap-3 px-4 py-3 text-base text-slate-600 hover:text-blue-600 rounded-xl">
+                      <Link
+                        to="/my-favorites"
+                        className="menu-item-float flex items-center gap-3 px-4 py-3 text-base text-slate-600 hover:text-blue-600 rounded-xl"
+                      >
                         <Heart size={20} />
                         <span className="flex-1">我的收藏</span>
                         <ChevronRight size={18} className="text-slate-300" />
@@ -362,7 +392,10 @@ const Navbar: React.FC = () => {
                       {isAdmin() && (
                         <>
                           <div className="h-px bg-slate-100 my-2" />
-                          <Link to="/admin" className="menu-item-float flex items-center gap-3 px-4 py-3 text-base text-slate-600 hover:text-purple-600 rounded-xl">
+                          <Link
+                            to="/admin"
+                            className="menu-item-float flex items-center gap-3 px-4 py-3 text-base text-slate-600 hover:text-purple-600 rounded-xl"
+                          >
                             <Shield size={20} />
                             <span className="flex-1">管理后台</span>
                             <ChevronRight size={18} className="text-slate-300" />
@@ -434,7 +467,9 @@ const Navbar: React.FC = () => {
 
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length === 0 ? (
-                        <div className="px-4 py-6 text-xs text-slate-400 text-center">暂无新消息</div>
+                        <div className="px-4 py-6 text-xs text-slate-400 text-center">
+                          暂无新消息
+                        </div>
                       ) : (
                         notifications.map((n) => (
                           <button
@@ -447,19 +482,29 @@ const Navbar: React.FC = () => {
                           >
                             <div className="w-9 h-9 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center text-xs font-medium text-slate-500">
                               {n.avatarUrl ? (
-                                <img src={n.avatarUrl} alt={n.fromName} className="w-full h-full object-cover" />
+                                <img
+                                  src={n.avatarUrl}
+                                  alt={n.fromName}
+                                  className="w-full h-full object-cover"
+                                />
                               ) : (
                                 n.fromName?.[0] || '聊'
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm font-medium text-slate-900 truncate">{n.fromName}</span>
-                                <span className="text-[11px] text-slate-400 ml-2 whitespace-nowrap">{n.time}</span>
+                                <span className="text-sm font-medium text-slate-900 truncate">
+                                  {n.fromName}
+                                </span>
+                                <span className="text-[11px] text-slate-400 ml-2 whitespace-nowrap">
+                                  {n.time}
+                                </span>
                               </div>
                               <p className="text-xs text-slate-500 truncate">{n.preview}</p>
                             </div>
-                            {n.unreadCount > 0 && <span className="mt-1 w-2 h-2 rounded-full bg-blue-500" />}
+                            {n.unreadCount > 0 && (
+                              <span className="mt-1 w-2 h-2 rounded-full bg-blue-500" />
+                            )}
                           </button>
                         ))
                       )}
@@ -529,23 +574,38 @@ const Navbar: React.FC = () => {
               <div className="flex flex-col gap-2 mt-4">
                 {isLoggedIn ? (
                   <>
-                    <Link to={`/user/${currentUser?.id}`} className="p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-slate-700">
+                    <Link
+                      to={`/user/${currentUser?.id}`}
+                      className="p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-slate-700"
+                    >
                       <div className="w-6 h-6 rounded-full bg-slate-200 overflow-hidden">
                         <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
                       </div>
                       {currentUserDisplayName}
                     </Link>
-                    <Link to="/my-products" className="p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-slate-700">
+                    <Link
+                      to="/my-products"
+                      className="p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-slate-700"
+                    >
                       <Package size={20} /> 我的发布
                     </Link>
-                    <Link to="/my-orders" className="p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-slate-700">
+                    <Link
+                      to="/my-orders"
+                      className="p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-slate-700"
+                    >
                       <ShoppingBag size={20} /> 我的订单
                     </Link>
-                    <Link to="/my-favorites" className="p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-slate-700">
+                    <Link
+                      to="/my-favorites"
+                      className="p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-slate-700"
+                    >
                       <Heart size={20} /> 我的收藏
                     </Link>
                     {isAdmin() && (
-                      <Link to="/admin" className="p-3 hover:bg-purple-50 rounded-lg flex items-center gap-3 text-purple-600">
+                      <Link
+                        to="/admin"
+                        className="p-3 hover:bg-purple-50 rounded-lg flex items-center gap-3 text-purple-600"
+                      >
                         <Shield size={20} /> 管理后台
                       </Link>
                     )}

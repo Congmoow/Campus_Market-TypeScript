@@ -8,6 +8,7 @@ import EditProfileModal from '../components/EditProfileModal';
 import { chatApi, userApi } from '../api';
 import { getStoredUser, isAuthenticated } from '../lib/auth';
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
+import type { ProfileContainer } from '../lib/profile-update';
 import type { ProductListItem, User, UserProfile as UserProfileType } from '@campus-market/shared';
 import welcomeSvg from '../assets/welcome.svg';
 
@@ -44,7 +45,7 @@ interface MappedProduct {
   };
 }
 
-interface ProfileData extends User {
+type ProfileData = Omit<User, 'studentId'> & {
   profile?: UserProfileType;
   avatarUrl?: string;
   name?: string;
@@ -57,7 +58,7 @@ interface ProfileData extends User {
   joinAt?: string;
   sellingCount?: number;
   soldCount?: number;
-}
+};
 
 interface CachedProfileUser {
   id?: number;
@@ -79,7 +80,7 @@ const PRODUCT_TAB_QUERY_KEY = 'tab';
 
 const getProfileField = <T extends keyof UserProfileType>(
   profile: ProfileData | null,
-  key: T
+  key: T,
 ): UserProfileType[T] | undefined => {
   const topLevelValue = profile?.[key as keyof ProfileData];
   return (topLevelValue as UserProfileType[T] | undefined) ?? profile?.profile?.[key];
@@ -151,10 +152,7 @@ const syncCurrentUserCache = (profileData: ProfileData) => {
   }
 
   const displayName =
-    profileData.name ||
-    profileData.profile?.name ||
-    storedUser.name ||
-    storedUser.studentId;
+    profileData.name || profileData.profile?.name || storedUser.name || storedUser.studentId;
 
   const updatedUser = {
     ...storedUser,
@@ -185,7 +183,10 @@ const syncCurrentUserCache = (profileData: ProfileData) => {
 };
 
 const LoadingLine: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <span aria-hidden="true" className={`inline-block rounded bg-slate-200 animate-pulse align-middle ${className}`.trim()} />
+  <span
+    aria-hidden="true"
+    className={`inline-block rounded bg-slate-200 animate-pulse align-middle ${className}`.trim()}
+  />
 );
 
 const UserProfile: React.FC = () => {
@@ -198,7 +199,7 @@ const UserProfile: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [activeProductTab, setActiveProductTab] = useState<ProductTab>(() =>
-    getProductTabFromSearch(typeof window === 'undefined' ? '' : window.location.search)
+    getProductTabFromSearch(typeof window === 'undefined' ? '' : window.location.search),
   );
 
   const currentUser = getStoredUser<CachedProfileUser>();
@@ -263,12 +264,15 @@ const UserProfile: React.FC = () => {
         location: product.location || '校内',
         timeAgo: formatTime(product.createdAt),
         seller: {
-          name: getUserDisplayName(product.seller, sourceProfile?.name || sourceProfile?.studentId || '同学'),
+          name: getUserDisplayName(
+            product.seller,
+            sourceProfile?.name || sourceProfile?.studentId || '同学',
+          ),
           avatar:
             getUserAvatarUrl(
               product.seller,
               getUserAvatarUrl(sourceProfile) ||
-                `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`
+                `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,
             ) || '',
         },
       }));
@@ -284,7 +288,9 @@ const UserProfile: React.FC = () => {
   const loadData = async () => {
     if (!id) return;
 
-    const initialTab = getProductTabFromSearch(typeof window === 'undefined' ? '' : window.location.search);
+    const initialTab = getProductTabFromSearch(
+      typeof window === 'undefined' ? '' : window.location.search,
+    );
 
     try {
       setProfileLoading(true);
@@ -324,10 +330,19 @@ const UserProfile: React.FC = () => {
     }
   }, [id]);
 
-  const handleEditSuccess = (updatedProfile: ProfileData) => {
-    setProfile(updatedProfile);
+  const handleEditSuccess = (updatedProfile: ProfileContainer) => {
+    const nextProfile = {
+      ...profile,
+      ...updatedProfile,
+      profile: {
+        ...(profile?.profile ?? {}),
+        ...(updatedProfile.profile ?? {}),
+      },
+    } as ProfileData;
+
+    setProfile(nextProfile);
     try {
-      syncCurrentUserCache(updatedProfile);
+      syncCurrentUserCache(nextProfile);
     } catch {
       // Ignore local cache sync errors.
     }
@@ -340,7 +355,7 @@ const UserProfile: React.FC = () => {
   const displayGrade = profileLoading ? undefined : getProfileField(profile, 'grade');
   const displayCampus = profileLoading ? undefined : getProfileField(profile, 'campus');
   const displayBio = profileLoading ? undefined : profile?.bio || profile?.profile?.bio;
-  const displayCredit = profileLoading ? undefined : profile?.credit ?? 700;
+  const displayCredit = profileLoading ? undefined : (profile?.credit ?? 700);
   const displayJoinDate = profileLoading
     ? undefined
     : profile?.joinAt
@@ -383,7 +398,11 @@ const UserProfile: React.FC = () => {
                 {profileLoading ? (
                   <div className="w-full h-full rounded-full bg-slate-200 animate-pulse" />
                 ) : avatarUrl ? (
-                  <img src={avatarUrl} alt={displayName || '用户头像'} className="w-full h-full rounded-full bg-slate-100 object-cover" />
+                  <img
+                    src={avatarUrl}
+                    alt={displayName || '用户头像'}
+                    className="w-full h-full rounded-full bg-slate-100 object-cover"
+                  />
                 ) : (
                   <img
                     src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.id || id || profile?.studentId || 'user'}`}
@@ -415,7 +434,9 @@ const UserProfile: React.FC = () => {
                     <ShieldCheck className="text-blue-500" size={20} />
                   </h1>
                   <p className="text-slate-500 mt-1">
-                    {displayStudentId && <span className="font-mono text-sm">{displayStudentId}</span>}
+                    {displayStudentId && (
+                      <span className="font-mono text-sm">{displayStudentId}</span>
+                    )}
                     {displayStudentId && (displayMajor || displayGrade) && ' · '}
                     {displayMajor || displayGrade ? (
                       <>
@@ -437,19 +458,30 @@ const UserProfile: React.FC = () => {
                         <LoadingLine className="h-4 w-28" />
                       ) : (
                         <>
-                          信用分：<span className="font-bold text-slate-900">{displayCredit}</span>（良好）
+                          信用分：<span className="font-bold text-slate-900">{displayCredit}</span>
+                          （良好）
                         </>
                       )}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin size={16} />
-                    <span>{profileLoading ? <LoadingLine className="h-4 w-20" /> : displayCampus || '校内'}</span>
+                    <span>
+                      {profileLoading ? (
+                        <LoadingLine className="h-4 w-20" />
+                      ) : (
+                        displayCampus || '校内'
+                      )}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={16} />
                     <span>
-                      {profileLoading ? <LoadingLine className="h-4 w-24" /> : displayJoinDate || '加入时间未知'}
+                      {profileLoading ? (
+                        <LoadingLine className="h-4 w-24" />
+                      ) : (
+                        displayJoinDate || '加入时间未知'
+                      )}
                     </span>
                   </div>
                 </div>
@@ -464,7 +496,9 @@ const UserProfile: React.FC = () => {
                       <div className="h-4 w-4/5 rounded bg-slate-200 animate-pulse" />
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-500 leading-relaxed">这个同学还没有填写个人简介。</p>
+                    <p className="text-sm text-slate-500 leading-relaxed">
+                      这个同学还没有填写个人简介。
+                    </p>
                   )}
                 </div>
               </div>
@@ -499,7 +533,9 @@ const UserProfile: React.FC = () => {
                 <div className="grid sm:grid-cols-2 gap-4">
                   {productsLoading ? (
                     <div className="col-span-full text-center py-12 text-slate-400 text-sm">
-                      {activeProductTab === 'ON_SALE' ? '正在加载在售商品...' : '正在加载已卖出商品...'}
+                      {activeProductTab === 'ON_SALE'
+                        ? '正在加载在售商品...'
+                        : '正在加载已卖出商品...'}
                     </div>
                   ) : products.length === 0 ? (
                     <div className="col-span-full text-center py-12 text-slate-400 text-sm">

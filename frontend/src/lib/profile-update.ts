@@ -1,6 +1,6 @@
 import { getUserAvatarUrl } from './user-display';
 
-type ProfileFields = {
+export type ProfileFields = {
   name?: string;
   studentId?: string;
   major?: string;
@@ -10,7 +10,7 @@ type ProfileFields = {
   avatarUrl?: string;
 };
 
-type ProfileContainer = ProfileFields & {
+export type ProfileContainer = ProfileFields & {
   profile?: Partial<ProfileFields>;
 };
 
@@ -19,7 +19,7 @@ type LooseProfile = ProfileContainer | null | undefined;
 export function mergeUpdatedProfile(
   currentProfile: LooseProfile,
   submittedProfile: LooseProfile,
-  responseProfile: LooseProfile
+  responseProfile: LooseProfile,
 ) {
   const merged: ProfileContainer = {
     ...(currentProfile ?? {}),

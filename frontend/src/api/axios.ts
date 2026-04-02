@@ -1,8 +1,7 @@
-﻿import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse } from '@campus-market/shared';
+import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { clearAuthState } from '../lib/auth';
 
-const instance: AxiosInstance = axios.create({
+const instance = axios.create({
   baseURL: '/api',
   timeout: 10000,
 });
@@ -17,18 +16,37 @@ instance.interceptors.request.use(
 
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 instance.interceptors.response.use(
-  (response: AxiosResponse<ApiResponse>) => response.data as ApiResponse,
+  (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       clearAuthState('unauthorized');
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
-export default instance;
+const request = {
+  interceptors: instance.interceptors,
+  get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    return instance.get<unknown, T>(url, config);
+  },
+  post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    return instance.post<unknown, T>(url, data, config);
+  },
+  put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    return instance.put<unknown, T>(url, data, config);
+  },
+  patch<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    return instance.patch<unknown, T>(url, data, config);
+  },
+  delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    return instance.delete<unknown, T>(url, config);
+  },
+};
+
+export default request;

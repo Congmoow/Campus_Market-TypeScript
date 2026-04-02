@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { ToastItem, ToastType } from '../components/ToastContainer';
+import type { ToastItem } from '../components/ToastContainer';
+import type { ToastType } from '../components/Toast';
 
 let toastId = 0;
 
@@ -9,9 +10,9 @@ export const useToast = () => {
   const addToast = useCallback((message: string, type: ToastType = 'info', duration = 3000) => {
     const id = `toast-${toastId++}`;
     const newToast: ToastItem = { id, message, type, duration };
-    
+
     setToasts((prev) => [...prev, newToast]);
-    
+
     return id;
   }, []);
 
@@ -19,21 +20,33 @@ export const useToast = () => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const success = useCallback((message: string, duration?: number) => {
-    return addToast(message, 'success', duration);
-  }, [addToast]);
+  const success = useCallback(
+    (message: string, duration?: number) => {
+      return addToast(message, 'success', duration);
+    },
+    [addToast],
+  );
 
-  const error = useCallback((message: string, duration?: number) => {
-    return addToast(message, 'error', duration);
-  }, [addToast]);
+  const error = useCallback(
+    (message: string, duration?: number) => {
+      return addToast(message, 'error', duration);
+    },
+    [addToast],
+  );
 
-  const warning = useCallback((message: string, duration?: number) => {
-    return addToast(message, 'warning', duration);
-  }, [addToast]);
+  const warning = useCallback(
+    (message: string, duration?: number) => {
+      return addToast(message, 'warning', duration);
+    },
+    [addToast],
+  );
 
-  const info = useCallback((message: string, duration?: number) => {
-    return addToast(message, 'info', duration);
-  }, [addToast]);
+  const info = useCallback(
+    (message: string, duration?: number) => {
+      return addToast(message, 'info', duration);
+    },
+    [addToast],
+  );
 
   return {
     toasts,

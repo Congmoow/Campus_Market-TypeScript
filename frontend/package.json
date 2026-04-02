@@ -8,12 +8,13 @@
     "dev": "vite",
     "prebuild": "npm --workspace @campus-market/shared run build",
     "build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "preview": "vite preview",
     "pretest": "npm --workspace @campus-market/shared run build",
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {

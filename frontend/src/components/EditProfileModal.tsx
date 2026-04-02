@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FileText, GraduationCap, MapPin, School, User, X } from 'lucide-react';
 import { fileApi, userApi } from '../api';
-import { mergeUpdatedProfile } from '../lib/profile-update';
+import { mergeUpdatedProfile, type ProfileContainer } from '../lib/profile-update';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -25,7 +25,7 @@ interface EditProfileModalProps {
       avatarUrl?: string;
     };
   } | null;
-  onSuccess?: (data: any) => void;
+  onSuccess?: (data: ProfileContainer) => void;
 }
 
 interface ProfileFormData {
@@ -38,9 +38,11 @@ interface ProfileFormData {
   avatarUrl: string;
 }
 
+type NestedProfile = NonNullable<NonNullable<EditProfileModalProps['currentProfile']>['profile']>;
+
 const readProfileValue = (
   currentProfile: EditProfileModalProps['currentProfile'],
-  key: keyof NonNullable<EditProfileModalProps['currentProfile']>['profile']
+  key: keyof NestedProfile,
 ) => {
   return currentProfile?.profile?.[key];
 };
@@ -68,36 +70,23 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
     if (currentProfile && isOpen) {
       setFormData({
         name: currentProfile.name || readProfileValue(currentProfile, 'name') || '',
-        studentId:
-          currentProfile.studentId ||
-          readProfileValue(currentProfile, 'studentId') ||
-          '',
+        studentId: currentProfile.studentId || readProfileValue(currentProfile, 'studentId') || '',
         major: currentProfile.major || readProfileValue(currentProfile, 'major') || '',
         grade: currentProfile.grade || readProfileValue(currentProfile, 'grade') || '',
-        campus:
-          currentProfile.campus ||
-          readProfileValue(currentProfile, 'campus') ||
-          '',
+        campus: currentProfile.campus || readProfileValue(currentProfile, 'campus') || '',
         bio: currentProfile.bio || readProfileValue(currentProfile, 'bio') || '',
-        avatarUrl:
-          currentProfile.avatarUrl ||
-          readProfileValue(currentProfile, 'avatarUrl') ||
-          '',
+        avatarUrl: currentProfile.avatarUrl || readProfileValue(currentProfile, 'avatarUrl') || '',
       });
     }
   }, [currentProfile, isOpen]);
 
-  const handleInputChange = (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setError('');
   };
 
-  const handleAvatarChange = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -149,10 +138,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[60] flex items-center justify-center p-4"
       >
-        <div
-          className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-          onClick={onClose}
-        />
+        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
 
         <motion.div
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -173,9 +159,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
           <div className="p-8">
             {error && (
-              <div className="mb-4 p-3 bg-red-50 text-red-500 text-sm rounded-lg">
-                {error}
-              </div>
+              <div className="mb-4 p-3 bg-red-50 text-red-500 text-sm rounded-lg">{error}</div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -208,17 +192,13 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({
                       <button
                         type="button"
                         className="text-xs text-slate-400 hover:text-red-500"
-                        onClick={() =>
-                          setFormData((prev) => ({ ...prev, avatarUrl: '' }))
-                        }
+                        onClick={() => setFormData((prev) => ({ ...prev, avatarUrl: '' }))}
                       >
                         清除
                       </button>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    建议使用正方形图片，大小不超过2MB
-                  </p>
+                  <p className="text-[11px] text-slate-400">建议使用正方形图片，大小不超过2MB</p>
                 </div>
               </div>
 

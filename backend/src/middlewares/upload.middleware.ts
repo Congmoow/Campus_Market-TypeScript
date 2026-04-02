@@ -1,6 +1,5 @@
 import multer, { FileFilterCallback } from 'multer';
 import { Request } from 'express';
-import path from 'path';
 import fs from 'fs';
 import { uploadConfig, generateUniqueFilename, isValidMimeType } from '../config/upload.config';
 import { ValidationException } from '../utils/error.util';
@@ -19,7 +18,7 @@ function ensureUploadDir(dir: string) {
  */
 function createStorage(destination: string) {
   ensureUploadDir(destination);
-  
+
   return multer.diskStorage({
     destination: (req, file, cb) => {
       cb(null, destination);

@@ -240,6 +240,8 @@ nul
 # Local AI/IDE artifacts
 .codex-artifacts/
 .kiro/
+.npm-cache/
+.husky/_/
 
 # Archive files
 *.zip

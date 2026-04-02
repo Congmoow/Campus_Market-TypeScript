@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -11,12 +11,7 @@ export interface ToastProps {
   onClose: () => void;
 }
 
-const Toast: React.FC<ToastProps> = ({ 
-  message, 
-  type = 'info', 
-  duration = 3000, 
-  onClose 
-}) => {
+const Toast: React.FC<ToastProps> = ({ message, type = 'info', duration = 3000, onClose }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose();
