@@ -2,8 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 const authState = vi.hoisted(() => ({
-  isAuthenticated: vi.fn(),
-  isAdmin: vi.fn(),
+  restoreAuthSession: vi.fn(),
+  useAuthSession: vi.fn(),
 }));
 
 vi.mock('./lib/auth', () => authState);
@@ -27,9 +27,13 @@ vi.mock('./pages/NotFound', () => ({ default: () => <div>Not Found Page</div> })
 
 describe('App route guards', () => {
   beforeEach(() => {
-    authState.isAuthenticated.mockReturnValue(false);
-    authState.isAdmin.mockReturnValue(false);
+    authState.restoreAuthSession.mockResolvedValue(null);
+    authState.useAuthSession.mockReturnValue({
+      status: 'unauthenticated',
+      user: null,
+    });
     window.history.replaceState({}, '', '/');
+    localStorage.clear();
   });
 
   it('redirects unauthenticated users away from protected routes', async () => {
@@ -42,9 +46,23 @@ describe('App route guards', () => {
     expect(window.location.pathname).toBe('/login');
   });
 
-  it('redirects non-admin users away from the admin route', async () => {
-    authState.isAuthenticated.mockReturnValue(true);
-    authState.isAdmin.mockReturnValue(false);
+  it('does not trust spoofed local admin data when the current session is not admin', async () => {
+    localStorage.setItem('token', 'spoofed-token');
+    localStorage.setItem(
+      'user',
+      JSON.stringify({
+        id: 1,
+        role: 'ADMIN',
+      }),
+    );
+    authState.useAuthSession.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 1,
+        studentId: '20230001',
+        role: 'USER',
+      },
+    });
     const { default: App } = await import('./App');
     window.history.replaceState({}, '', '/admin');
 
@@ -52,5 +70,13 @@ describe('App route guards', () => {
 
     expect(await screen.findByText('Home Page')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
+  });
+
+  it('starts session restoration when the app mounts', async () => {
+    const { default: App } = await import('./App');
+
+    render(<App />);
+
+    expect(authState.restoreAuthSession).toHaveBeenCalled();
   });
 });

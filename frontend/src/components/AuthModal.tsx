@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Lock, Mail, ArrowRight, X, KeyRound, ArrowLeft, Phone } from 'lucide-react';
 import { authApi } from '../api';
-import { getUserDisplayName } from '../lib/user-display';
 import { setAuthSession } from '../lib/auth';
 import happyStudent from '../assets/storyset-happy-student.svg';
 
@@ -81,13 +80,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
           password: formData.password,
         });
         if (res.success) {
-          const displayName = getUserDisplayName(res.data.user, res.data.user.studentId);
-          setAuthSession(res.data.token, {
-            id: res.data.user.id,
-            studentId: res.data.user.studentId,
-            name: displayName,
-            role: res.data.user.role || 'USER',
-          });
+          setAuthSession(res.data.token, res.data.user);
           onLoginSuccess();
           onClose();
         } else {
@@ -101,16 +94,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
           name: formData.name,
         });
         if (res.success) {
-          const displayName = getUserDisplayName(
-            res.data.user,
-            formData.name || res.data.user.studentId,
-          );
-          setAuthSession(res.data.token, {
-            id: res.data.user.id,
-            studentId: res.data.user.studentId,
-            name: displayName,
-            role: res.data.user.role || 'USER',
-          });
+          setAuthSession(res.data.token, res.data.user);
           onLoginSuccess();
           onClose();
         } else {

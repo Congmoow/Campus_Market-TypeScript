@@ -15,6 +15,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { orderApi, chatApi } from '../api';
+import { getCurrentUser } from '../lib/auth';
 import type { OrderStatus, OrderWithDetails } from '@campus-market/shared';
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
 
@@ -126,7 +127,9 @@ const OrderDetail: React.FC = () => {
   const [shipLoading, setShipLoading] = useState<boolean>(false);
   const [cancelLoading, setCancelLoading] = useState<boolean>(false);
   const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
-  const [statusAnimationData, setStatusAnimationData] = useState<Record<string, unknown> | null>(null);
+  const [statusAnimationData, setStatusAnimationData] = useState<Record<string, unknown> | null>(
+    null,
+  );
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -269,14 +272,7 @@ const OrderDetail: React.FC = () => {
     }
   };
 
-  const currentUser = useMemo(() => {
-    try {
-      const userStr = localStorage.getItem('user');
-      return userStr ? (JSON.parse(userStr) as { id?: number | string }) : null;
-    } catch {
-      return null;
-    }
-  }, []);
+  const currentUser = useMemo(() => getCurrentUser() as { id?: number | string } | null, []);
 
   if (loading) {
     return (
@@ -322,8 +318,8 @@ const OrderDetail: React.FC = () => {
     getUserAvatarUrl(
       partner,
       `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-        String(partnerId || partnerName)
-      )}`
+        String(partnerId || partnerName),
+      )}`,
     ) || '';
 
   const containerVariants = {
@@ -388,7 +384,11 @@ const OrderDetail: React.FC = () => {
                 <p className="text-slate-600 opacity-80 font-medium ml-11">{statusCfg.desc}</p>
                 {statusAnimationConfig && statusAnimationData && (
                   <div className={statusAnimationConfig.className}>
-                    <LazyLottie animationData={statusAnimationData} loop={true} style={statusAnimationConfig.style} />
+                    <LazyLottie
+                      animationData={statusAnimationData}
+                      loop={true}
+                      style={statusAnimationConfig.style}
+                    />
                   </div>
                 )}
 
@@ -430,7 +430,10 @@ const OrderDetail: React.FC = () => {
               <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-32 h-32 bg-current opacity-5 blur-2xl rounded-full pointer-events-none" />
             </motion.div>
 
-            <motion.div variants={itemVariants} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <motion.div
+              variants={itemVariants}
+              className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
+            >
               <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                 <div className="flex items-center gap-2 text-slate-900 font-bold">
                   <Package size={20} className="text-blue-500" />
@@ -441,7 +444,11 @@ const OrderDetail: React.FC = () => {
               <div className="p-6">
                 <div className="flex gap-6 mb-8 pb-8 border-b border-slate-50 border-dashed">
                   <div className="w-28 h-28 rounded-2xl bg-slate-100 overflow-hidden border border-slate-100 shadow-inner flex-shrink-0">
-                    <img src={productImage} alt={order.product?.title || '商品'} className="w-full h-full object-cover" />
+                    <img
+                      src={productImage}
+                      alt={order.product?.title || '商品'}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <div className="flex-1 flex flex-col">
                     <div className="flex-1">
@@ -453,7 +460,9 @@ const OrderDetail: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-end justify-between">
-                      <div className="text-2xl font-bold text-blue-600 tracking-tight">¥{order.priceSnapshot}</div>
+                      <div className="text-2xl font-bold text-blue-600 tracking-tight">
+                        ¥{order.priceSnapshot}
+                      </div>
                       <span className="text-slate-400 text-sm font-medium">x1</span>
                     </div>
                   </div>
@@ -461,7 +470,10 @@ const OrderDetail: React.FC = () => {
 
                 <div className="grid grid-cols-1 gap-y-4">
                   <InfoRow label="订单编号" value={String(order.id)} copyable />
-                  <InfoRow label="创建时间" value={new Date(order.createdAt).toLocaleString('zh-CN')} />
+                  <InfoRow
+                    label="创建时间"
+                    value={new Date(order.createdAt).toLocaleString('zh-CN')}
+                  />
                   <InfoRow label="交易方式" value={order.meetLocation || '线下交易'} />
                   <InfoRow label="订单状态" value={statusCfg.label} />
                 </div>
@@ -470,13 +482,20 @@ const OrderDetail: React.FC = () => {
           </div>
 
           <div className="lg:col-span-1 flex flex-col space-y-6">
-            <motion.div variants={itemVariants} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+            <motion.div
+              variants={itemVariants}
+              className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6"
+            >
               <div className="text-center">
                 <div
                   className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full p-1 mb-4 relative group cursor-pointer"
                   onClick={() => navigate(`/user/${partnerId}`)}
                 >
-                  <img src={avatar} alt="Avatar" className="w-full h-full rounded-full object-cover border-2 border-white shadow-sm" />
+                  <img
+                    src={avatar}
+                    alt="Avatar"
+                    className="w-full h-full rounded-full object-cover border-2 border-white shadow-sm"
+                  />
                   <div className="absolute bottom-0 right-0 w-6 h-6 bg-green-500 border-4 border-white rounded-full" />
                 </div>
                 <h3
@@ -606,7 +625,9 @@ const OrderDetail: React.FC = () => {
                   disabled={cancelLoading}
                   className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-red-500/20"
                 >
-                  {cancelLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  {cancelLoading && (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  )}
                   确认取消
                 </button>
               </div>
@@ -643,5 +664,3 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, copyable }) => (
 );
 
 export default OrderDetail;
-
-

@@ -34,7 +34,10 @@ vi.mock('../../components/EditProfileModal', () => ({
 
 const authState = vi.hoisted(() => ({
   isAuthenticated: vi.fn(),
+  getCurrentUser: vi.fn(),
   getStoredUser: vi.fn(),
+  updateAuthSessionUser: vi.fn(),
+  useAuthSession: vi.fn(),
 }));
 
 vi.mock('../../lib/auth', () => authState);
@@ -69,9 +72,19 @@ describe('UserProfile', () => {
     window.history.replaceState({}, '', '/user/2');
     mockUseParams.mockReturnValue({ id: '2' });
     authState.isAuthenticated.mockReturnValue(true);
+    authState.getCurrentUser.mockReturnValue(null);
     authState.getStoredUser.mockImplementation(() => {
       const raw = localStorage.getItem('user');
       return raw ? JSON.parse(raw) : null;
+    });
+    authState.updateAuthSessionUser.mockReset();
+    authState.useAuthSession.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 1,
+        studentId: '20230001',
+        role: 'USER',
+      },
     });
     localStorage.setItem('user', JSON.stringify({ id: 1, studentId: '20230001' }));
 
@@ -119,7 +132,9 @@ describe('UserProfile', () => {
 
     render(<UserProfile />);
 
-    const contactButton = (await screen.findByText('联系 Ta')).closest('button') as HTMLButtonElement;
+    const contactButton = (await screen.findByText('联系 Ta')).closest(
+      'button',
+    ) as HTMLButtonElement;
     await user.click(contactButton);
 
     await waitFor(() => {
@@ -148,6 +163,14 @@ describe('UserProfile', () => {
     const cachedJoinAt = '2024-09-01T08:00:00.000Z';
 
     mockUseParams.mockReturnValue({ id: '1' });
+    authState.useAuthSession.mockReturnValue({
+      status: 'authenticated',
+      user: {
+        id: 1,
+        studentId: '20230001',
+        role: 'USER',
+      },
+    });
     authState.getStoredUser.mockReturnValue({
       id: 1,
       name: 'Cached Seller',
@@ -171,7 +194,7 @@ describe('UserProfile', () => {
         grade: '2023',
         bio: 'Cached signature',
         createdAt: cachedJoinAt,
-      })
+      }),
     );
     apiMocks.userApi.getProfile.mockReturnValue(pendingProfile as any);
 
@@ -181,7 +204,9 @@ describe('UserProfile', () => {
     expect(screen.queryByText('Yuquan')).not.toBeInTheDocument();
     expect(screen.queryByText(/Computer Science/)).not.toBeInTheDocument();
     expect(screen.queryByText('Cached signature')).not.toBeInTheDocument();
-    expect(screen.queryByText(new Date(cachedJoinAt).toLocaleDateString('zh-CN'))).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(new Date(cachedJoinAt).toLocaleDateString('zh-CN')),
+    ).not.toBeInTheDocument();
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThanOrEqual(5);
 
     await act(async () => {
