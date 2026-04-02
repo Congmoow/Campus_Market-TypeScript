@@ -8,7 +8,6 @@ import EditProfileModal from '../components/EditProfileModal';
 import { chatApi, userApi } from '../api';
 import {
   getCurrentUser,
-  getStoredUser,
   isAuthenticated,
   updateAuthSessionUser,
   useAuthSession,
@@ -66,20 +65,6 @@ type ProfileData = Omit<User, 'studentId'> & {
   soldCount?: number;
 };
 
-interface CachedProfileUser {
-  id?: number;
-  userId?: number;
-  studentId?: string;
-  name?: string;
-  avatarUrl?: string;
-  campus?: string;
-  major?: string;
-  grade?: string;
-  bio?: string;
-  createdAt?: string | Date;
-  joinAt?: string | Date;
-}
-
 type ProductTab = 'ON_SALE' | 'SOLD';
 
 const PRODUCT_TAB_QUERY_KEY = 'tab';
@@ -129,41 +114,7 @@ const getInitialProfile = (userId: string | undefined): ProfileData | null => {
     };
   }
 
-  const storedUser = getStoredUser<CachedProfileUser>();
-  if (!storedUser) {
-    return null;
-  }
-
-  const storedUserId = storedUser.userId ?? storedUser.id;
-  if (typeof storedUserId !== 'number' || String(storedUserId) !== userId) {
-    return null;
-  }
-
-  return {
-    id: storedUserId,
-    studentId: storedUser.studentId || '',
-    phone: undefined,
-    createdAt: storedUser.createdAt ? new Date(storedUser.createdAt) : new Date(0),
-    updatedAt: new Date(0),
-    name: storedUser.name,
-    avatarUrl: storedUser.avatarUrl,
-    campus: storedUser.campus,
-    major: storedUser.major,
-    grade: storedUser.grade,
-    bio: storedUser.bio,
-    joinAt: storedUser.joinAt ? String(storedUser.joinAt) : undefined,
-    profile: {
-      id: storedUserId,
-      userId: storedUserId,
-      name: storedUser.name,
-      studentId: storedUser.studentId,
-      campus: storedUser.campus,
-      avatarUrl: storedUser.avatarUrl,
-      major: storedUser.major,
-      grade: storedUser.grade,
-      bio: storedUser.bio,
-    },
-  };
+  return null;
 };
 
 const buildSessionUser = (profileData: ProfileData, currentUser: User): User => {
@@ -194,43 +145,6 @@ const buildSessionUser = (profileData: ProfileData, currentUser: User): User => 
 const syncCurrentUserCache = (profileData: ProfileData, currentUser: User | null) => {
   if (currentUser && String(currentUser.id) === String(profileData.id)) {
     updateAuthSessionUser(buildSessionUser(profileData, currentUser));
-  }
-
-  const storedUser = getStoredUser<CachedProfileUser>();
-  const localUserId = storedUser?.userId ?? storedUser?.id;
-
-  if (!storedUser || String(localUserId) !== String(profileData.id)) {
-    return;
-  }
-
-  const displayName =
-    profileData.name || profileData.profile?.name || storedUser.name || storedUser.studentId;
-
-  const updatedUser = {
-    ...storedUser,
-    id: profileData.id,
-    name: displayName,
-    studentId: profileData.studentId || storedUser.studentId,
-    avatarUrl: getUserAvatarUrl(profileData) || storedUser.avatarUrl,
-    campus: getProfileField(profileData, 'campus') || storedUser.campus,
-    major: getProfileField(profileData, 'major') || storedUser.major,
-    grade: getProfileField(profileData, 'grade') || storedUser.grade,
-    bio: profileData.bio || profileData.profile?.bio || storedUser.bio,
-    createdAt:
-      profileData.createdAt instanceof Date
-        ? profileData.createdAt.toISOString()
-        : profileData.createdAt || storedUser.createdAt,
-    joinAt:
-      profileData.joinAt ||
-      (profileData.createdAt instanceof Date
-        ? profileData.createdAt.toISOString()
-        : profileData.createdAt) ||
-      storedUser.joinAt,
-  };
-
-  localStorage.setItem('user', JSON.stringify(updatedUser));
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('user-profile-updated'));
   }
 };
 

@@ -38,17 +38,8 @@ describe('auth helpers', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns null instead of throwing when stored user JSON is invalid', async () => {
-    localStorage.setItem('user', '{bad-json');
-
-    const { getStoredUser } = await import('../auth');
-
-    expect(getStoredUser()).toBeNull();
-  });
-
   it('clears auth state and dispatches a change event', async () => {
     localStorage.setItem('token', 'token');
-    localStorage.setItem('user', JSON.stringify({ id: 1 }));
 
     const listener = vi.fn();
     window.addEventListener('auth:changed', listener);
@@ -57,7 +48,6 @@ describe('auth helpers', () => {
     clearAuthState('logout');
 
     expect(localStorage.getItem('token') ?? null).toBeNull();
-    expect(localStorage.getItem('user') ?? null).toBeNull();
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0]).toBeInstanceOf(CustomEvent);
     expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ reason: 'logout' });
@@ -126,13 +116,6 @@ describe('auth helpers', () => {
 
   it('clears auth state when refresh bootstrap fails', async () => {
     localStorage.setItem('token', 'stale-token');
-    localStorage.setItem(
-      'user',
-      JSON.stringify({
-        id: 9,
-        role: 'ADMIN',
-      }),
-    );
 
     const post = vi.fn().mockRejectedValue(new Error('unauthorized'));
     const get = vi.fn().mockResolvedValue({
@@ -158,7 +141,6 @@ describe('auth helpers', () => {
     });
     expect(get).not.toHaveBeenCalled();
     expect(localStorage.getItem('token') ?? null).toBeNull();
-    expect(localStorage.getItem('user') ?? null).toBeNull();
     expect(getAuthSessionState()).toMatchObject({
       status: 'unauthenticated',
       user: null,

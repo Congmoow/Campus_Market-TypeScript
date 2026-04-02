@@ -1,10 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type {
-  AccessTokenResponse,
-  ApiResponse,
-  AuthTokenPayload,
-  User,
-} from '@campus-market/shared';
+import type { AccessTokenResponse, ApiResponse, User } from '@campus-market/shared';
 import request, { configureHttpClientAuth } from './http';
 
 export const AUTH_CHANGE_EVENT = 'auth:changed';
@@ -13,9 +8,6 @@ const AUTH_ME_ENDPOINT = '/auth/me';
 const AUTH_REFRESH_ENDPOINT = '/auth/refresh';
 const AUTH_LOGOUT_ENDPOINT = '/auth/logout';
 const TOKEN_STORAGE_KEY = 'token';
-const USER_STORAGE_KEY = 'user';
-
-type StoredUser = Record<string, unknown>;
 type SessionListener = () => void;
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
@@ -53,7 +45,7 @@ function clearLegacyStoredAuthData(): void {
   }
 
   localStorage.removeItem(TOKEN_STORAGE_KEY);
-  localStorage.removeItem(USER_STORAGE_KEY);
+  localStorage.removeItem('user');
 }
 
 function setAccessToken(token: string | null): void {
@@ -102,31 +94,6 @@ async function fetchCurrentSessionUser(): Promise<User | null> {
   }
 
   return payload.data;
-}
-
-export function parseJwt(token: string): AuthTokenPayload | null {
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
-        .join(''),
-    );
-    return JSON.parse(jsonPayload) as AuthTokenPayload;
-  } catch {
-    return null;
-  }
-}
-
-export function isTokenExpired(token: string): boolean {
-  const payload = parseJwt(token);
-  if (!payload?.exp) {
-    return true;
-  }
-
-  return Date.now() >= payload.exp * 1000;
 }
 
 export function dispatchAuthChanged(reason: string): void {
@@ -192,24 +159,6 @@ export function clearAuthState(reason = 'logout'): void {
   setAccessToken(null);
   setSessionState({ status: 'unauthenticated', user: null });
   dispatchAuthChanged(reason);
-}
-
-export function getStoredUser<T = StoredUser>(): T | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const userStr = localStorage.getItem(USER_STORAGE_KEY);
-  if (!userStr) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(userStr) as T;
-  } catch {
-    localStorage.removeItem(USER_STORAGE_KEY);
-    return null;
-  }
 }
 
 export function setAuthSession(token: string, user: User): void {

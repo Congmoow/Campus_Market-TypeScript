@@ -119,7 +119,7 @@ export class AuthService {
     }
 
     if (!user.enabled) {
-      throw new UnauthorizedException('璐︽埛宸茶绂佺敤');
+      throw new UnauthorizedException('账户已被禁用');
     }
 
     const isPasswordValid = await comparePassword(data.password, user.passwordHash);
@@ -265,7 +265,7 @@ export class AuthService {
 
   private validateRegisterData(data: RegisterRequest): void {
     if (!data.studentId || data.studentId.trim().length === 0) {
-      throw new ValidationException('瀛﹀彿涓嶈兘涓虹┖');
+      throw new ValidationException('学号不能为空');
     }
 
     if (data.studentId.length < 8 || data.studentId.length > 20) {
@@ -277,7 +277,7 @@ export class AuthService {
     }
 
     if (data.phone && !/^1[3-9]\d{9}$/.test(data.phone)) {
-      throw new ValidationException('鎵嬫満鍙锋牸寮忎笉姝ｇ‘');
+      throw new ValidationException('手机号格式不正确');
     }
   }
 

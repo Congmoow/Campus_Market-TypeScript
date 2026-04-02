@@ -38,7 +38,7 @@ export class AuthController {
             token: result.accessToken,
             user: result.user,
           },
-          '娉ㄥ唽鎴愬姛',
+          '注册成功',
         ),
       );
     } catch (error) {
@@ -57,7 +57,7 @@ export class AuthController {
             token: result.accessToken,
             user: result.user,
           },
-          '鐧诲綍鎴愬姛',
+          '登录成功',
         ),
       );
     } catch (error) {
@@ -107,7 +107,7 @@ export class AuthController {
       const userId = req.user!.id;
       const data: ResetPasswordRequest = req.body;
       await this.authService.resetPassword(userId, data);
-      res.json(successResponse(null, '瀵嗙爜淇敼鎴愬姛'));
+      res.json(successResponse(null, '密码修改成功'));
     } catch (error) {
       next(error);
     }

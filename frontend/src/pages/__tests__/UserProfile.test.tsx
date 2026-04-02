@@ -35,7 +35,6 @@ vi.mock('../../components/EditProfileModal', () => ({
 const authState = vi.hoisted(() => ({
   isAuthenticated: vi.fn(),
   getCurrentUser: vi.fn(),
-  getStoredUser: vi.fn(),
   updateAuthSessionUser: vi.fn(),
   useAuthSession: vi.fn(),
 }));
@@ -73,10 +72,6 @@ describe('UserProfile', () => {
     mockUseParams.mockReturnValue({ id: '2' });
     authState.isAuthenticated.mockReturnValue(true);
     authState.getCurrentUser.mockReturnValue(null);
-    authState.getStoredUser.mockImplementation(() => {
-      const raw = localStorage.getItem('user');
-      return raw ? JSON.parse(raw) : null;
-    });
     authState.updateAuthSessionUser.mockReset();
     authState.useAuthSession.mockReturnValue({
       status: 'authenticated',
@@ -86,7 +81,6 @@ describe('UserProfile', () => {
         role: 'USER',
       },
     });
-    localStorage.setItem('user', JSON.stringify({ id: 1, studentId: '20230001' }));
 
     apiMocks.userApi.getProfile.mockResolvedValue({
       success: true,
@@ -155,14 +149,13 @@ describe('UserProfile', () => {
     expect(screen.getByText('Seller bio')).toBeInTheDocument();
   });
 
-  it('renders profile skeletons instead of cached profile text while request resolves', async () => {
+  it('renders profile skeletons while the profile request is still pending', async () => {
     let resolveProfile!: (value: any) => void;
     const pendingProfile = new Promise((resolve) => {
       resolveProfile = resolve;
     });
-    const cachedJoinAt = '2024-09-01T08:00:00.000Z';
 
-    mockUseParams.mockReturnValue({ id: '1' });
+    mockUseParams.mockReturnValue({ id: '2' });
     authState.useAuthSession.mockReturnValue({
       status: 'authenticated',
       user: {
@@ -171,51 +164,23 @@ describe('UserProfile', () => {
         role: 'USER',
       },
     });
-    authState.getStoredUser.mockReturnValue({
-      id: 1,
-      name: 'Cached Seller',
-      studentId: '20230001',
-      avatarUrl: 'https://cdn.example.com/cached-avatar.png',
-      campus: 'Yuquan',
-      major: 'Computer Science',
-      grade: '2023',
-      bio: 'Cached signature',
-      createdAt: cachedJoinAt,
-    });
-    localStorage.setItem(
-      'user',
-      JSON.stringify({
-        id: 1,
-        name: 'Cached Seller',
-        studentId: '20230001',
-        avatarUrl: 'https://cdn.example.com/cached-avatar.png',
-        campus: 'Yuquan',
-        major: 'Computer Science',
-        grade: '2023',
-        bio: 'Cached signature',
-        createdAt: cachedJoinAt,
-      }),
-    );
     apiMocks.userApi.getProfile.mockReturnValue(pendingProfile as any);
 
     const { container } = render(<UserProfile />);
 
-    expect(screen.queryByRole('heading', { name: 'Cached Seller' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Yuquan')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Computer Science/)).not.toBeInTheDocument();
-    expect(screen.queryByText('Cached signature')).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(new Date(cachedJoinAt).toLocaleDateString('zh-CN')),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Seller' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Zijingang')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Software Engineering/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Seller bio')).not.toBeInTheDocument();
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThanOrEqual(5);
 
     await act(async () => {
       resolveProfile({
         success: true,
         data: {
-          id: 1,
-          studentId: '20230001',
-          name: 'Cached Seller',
+          id: 2,
+          studentId: '20230002',
+          name: 'Seller',
         },
       });
       await pendingProfile;

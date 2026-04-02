@@ -24,6 +24,7 @@ const refresh = jest.fn().mockResolvedValue({
   refreshToken: 'rotated-refresh-token',
 });
 const logout = jest.fn().mockResolvedValue(undefined);
+const resetPassword = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../../services/auth.service', () => ({
   AuthService: jest.fn().mockImplementation(() => ({
@@ -31,6 +32,7 @@ jest.mock('../../services/auth.service', () => ({
     register,
     refresh,
     logout,
+    resetPassword,
   })),
 }));
 
@@ -103,6 +105,51 @@ describe('AuthController', () => {
             role: 'USER',
           },
         },
+        message: '登录成功',
+      }),
+    );
+  });
+
+  it('returns readable Chinese success messages for register, logout and reset password', async () => {
+    req = {
+      ...req,
+      user: {
+        id: 1,
+        studentId: '20240001',
+        role: 'USER',
+      } as any,
+    };
+
+    await controller.register(req as Request, res as Response, next);
+    await controller.logout(req as Request, res as Response, next);
+    await controller.resetPassword(
+      {
+        ...req,
+        body: {
+          oldPassword: 'old-password',
+          newPassword: 'new-password',
+        },
+      } as Request,
+      res as Response,
+      next,
+    );
+
+    expect(res.json).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        message: '注册成功',
+      }),
+    );
+    expect(res.json).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        message: '退出成功',
+      }),
+    );
+    expect(res.json).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        message: '密码修改成功',
       }),
     );
   });

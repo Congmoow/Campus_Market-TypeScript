@@ -195,7 +195,7 @@ describe('AuthService', () => {
           password: 'password123',
           name: 'Test User',
         }),
-      ).rejects.toThrow(ValidationException);
+      ).rejects.toThrow('学号不能为空');
     });
 
     it('throws validation error for short password', async () => {
@@ -216,7 +216,7 @@ describe('AuthService', () => {
           phone: '12345',
           name: 'Test User',
         }),
-      ).rejects.toThrow(ValidationException);
+      ).rejects.toThrow('手机号格式不正确');
     });
   });
 
@@ -293,7 +293,7 @@ describe('AuthService', () => {
           studentId: '20240001',
           password: 'password123',
         }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow('账户已被禁用');
     });
 
     it('throws for incorrect password', async () => {
