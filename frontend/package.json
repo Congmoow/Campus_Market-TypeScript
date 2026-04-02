@@ -4,16 +4,20 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "npm --workspace @campus-market/shared run build",
     "dev": "vite",
+    "prebuild": "npm --workspace @campus-market/shared run build",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "pretest": "npm --workspace @campus-market/shared run build",
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@campus-market/shared": "file:../packages/shared",
     "@emoji-mart/data": "^1.2.1",
     "@emoji-mart/react": "^1.1.1",
     "@icon-park/react": "^1.4.2",

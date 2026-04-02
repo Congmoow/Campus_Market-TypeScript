@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
+import type { UpdateProfileRequest } from '@campus-market/shared';
 import { UserService } from '../services/user.service';
-import { UpdateProfileRequest } from '../types/shared';
 import { successResponse } from '../utils/response.util';
 
 /**

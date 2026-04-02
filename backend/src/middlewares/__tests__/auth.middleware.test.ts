@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+﻿import { Request, Response, NextFunction } from 'express';
 import { authenticate, optionalAuthenticate } from '../auth.middleware';
 import { verifyToken } from '../../utils/jwt.util';
 import { UnauthorizedException } from '../../utils/error.util';
@@ -24,8 +24,9 @@ describe('Auth Middleware', () => {
     it('should authenticate valid token', () => {
       const mockPayload = {
         id: 1,
-        username: 'testuser',
-        email: 'test@example.com',
+        studentId: '20230001',
+        phone: '13800138000',
+        role: 'USER',
       };
 
       mockRequest.headers = {
@@ -122,8 +123,9 @@ describe('Auth Middleware', () => {
     it('should authenticate valid token', () => {
       const mockPayload = {
         id: 1,
-        username: 'testuser',
-        email: 'test@example.com',
+        studentId: '20230001',
+        phone: '13800138000',
+        role: 'USER',
       };
 
       mockRequest.headers = {
@@ -191,3 +193,4 @@ describe('Auth Middleware', () => {
     });
   });
 });
+

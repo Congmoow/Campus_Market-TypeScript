@@ -1,39 +1,36 @@
-﻿import { prisma } from '../utils/prisma.util';
-import {
-  User,
-  UserProfile,
-  UpdateProfileRequest,
+import type {
+  Prisma,
+  Product as PrismaProduct,
+  ProductImage as PrismaProductImage,
+  User as PrismaUser,
+  UserProfile as PrismaUserProfile,
+} from '@prisma/client';
+import type {
   ProductListItem,
-} from '../types/shared';
+  UpdateProfileRequest,
+  User,
+} from '@campus-market/shared';
+import { prisma } from '../utils/prisma.util';
+import { mapProductImage, mapUser } from '../mappers/shared.mapper';
 import { NotFoundException } from '../utils/error.util';
 
+type UserProfileView = User & {
+  name?: string;
+  nickname?: string;
+  avatarUrl?: string;
+  major?: string;
+  grade?: string;
+  campus?: string;
+  bio?: string;
+  credit?: number;
+  joinAt: Date;
+  sellingCount: number;
+  soldCount: number;
+};
+
 export class UserService {
-  private convertUser(user: any, profile?: any): User & { profile?: UserProfile } {
-    return {
-      id: Number(user.id),
-      studentId: user.studentId,
-      email: user.phone || '',
-      role: user.role,
-      avatar: profile?.avatarUrl,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      profile: profile
-        ? {
-            id: Number(profile.id),
-            userId: Number(profile.userId),
-            name: profile.name || undefined,
-            nickname: profile.name || undefined,
-            studentId: profile.studentId || user.studentId,
-            phone: user.phone || undefined,
-            location: profile.campus || undefined,
-            avatarUrl: profile.avatarUrl || undefined,
-            major: profile.major || undefined,
-            grade: profile.grade || undefined,
-            campus: profile.campus || undefined,
-            bio: profile.bio || undefined,
-          }
-        : undefined,
-    };
+  private convertUser(user: PrismaUser, profile?: PrismaUserProfile | null): User {
+    return mapUser(user, profile);
   }
 
   private async getProfileCounts(userId: number): Promise<{
@@ -60,39 +57,36 @@ export class UserService {
 
   private async buildProfileResponse(
     userId: number,
-    user: any,
-    profile?: any
-  ): Promise<any> {
+    user: PrismaUser,
+    profile?: PrismaUserProfile | null
+  ): Promise<UserProfileView> {
     const { sellingCount, soldCount } = await this.getProfileCounts(userId);
-    const result = {
+    const base: UserProfileView = {
       ...this.convertUser(user, profile),
       sellingCount,
       soldCount,
+      joinAt: user.createdAt,
     };
 
     if (!profile) {
-      return {
-        ...result,
-        joinAt: user.createdAt,
-      };
+      return base;
     }
 
     return {
-      ...result,
-      name: profile.name,
-      nickname: profile.name,
+      ...base,
+      name: profile.name || undefined,
+      nickname: profile.name || undefined,
       studentId: profile.studentId || user.studentId,
-      avatarUrl: profile.avatarUrl,
-      major: profile.major,
-      grade: profile.grade,
-      campus: profile.campus,
-      bio: profile.bio,
+      avatarUrl: profile.avatarUrl || undefined,
+      major: profile.major || undefined,
+      grade: profile.grade || undefined,
+      campus: profile.campus || undefined,
+      bio: profile.bio || undefined,
       credit: profile.credit,
-      joinAt: user.createdAt,
     };
   }
 
-  async getUserProfile(userId: number): Promise<any> {
+  async getUserProfile(userId: number): Promise<UserProfileView> {
     const user = await prisma.user.findUnique({
       where: { id: BigInt(userId) },
     });
@@ -111,7 +105,7 @@ export class UserService {
   async updateUserProfile(
     userId: number,
     data: UpdateProfileRequest
-  ): Promise<User & { profile?: UserProfile }> {
+  ): Promise<UserProfileView> {
     const user = await prisma.user.findUnique({
       where: { id: BigInt(userId) },
     });
@@ -140,7 +134,9 @@ export class UserService {
       });
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.UserProfileUpdateInput = {
+      updatedAt: now,
+    };
     if (normalizedName !== undefined) updateData.name = normalizedName;
     if (data.studentId !== undefined) updateData.studentId = data.studentId;
     if (normalizedCampus !== undefined) updateData.campus = normalizedCampus;
@@ -148,7 +144,6 @@ export class UserService {
     if (normalizedAvatarUrl !== undefined) updateData.avatarUrl = normalizedAvatarUrl;
     if (data.major !== undefined) updateData.major = data.major;
     if (data.grade !== undefined) updateData.grade = data.grade;
-    updateData.updatedAt = now;
 
     if (profile) {
       profile = await prisma.userProfile.update({
@@ -184,7 +179,7 @@ export class UserService {
       throw new NotFoundException('用户不存在');
     }
 
-    const whereCondition: any = {
+    const whereCondition: Prisma.ProductWhereInput = {
       sellerId: BigInt(userId),
       status: { not: 'DELETED' },
     };
@@ -205,8 +200,12 @@ export class UserService {
       where: { userId: BigInt(userId) },
     });
 
-    return Promise.all(
-      products.map(async (product: any) => ({
+    return products.map(
+      (
+        product: PrismaProduct & {
+          images: PrismaProductImage[];
+        }
+      ) => ({
         id: Number(product.id),
         title: product.title,
         description: product.description,
@@ -219,33 +218,9 @@ export class UserService {
         sellerId: Number(product.sellerId),
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
-        images: product.images.map((img: any) => ({
-          id: Number(img.id),
-          productId: Number(img.productId),
-          url: img.url,
-        })),
-        seller: {
-          id: Number(user.id),
-          studentId: user.studentId,
-          email: user.phone || '',
-          role: user.role,
-          avatar: profile?.avatarUrl || undefined,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-          profile: profile
-            ? {
-                id: Number(profile.id),
-                userId: Number(profile.userId),
-                name: profile.name || undefined,
-                nickname: profile.name || undefined,
-                studentId: profile.studentId || user.studentId,
-                phone: user.phone || undefined,
-                location: profile.campus || undefined,
-                bio: profile.bio || undefined,
-              }
-            : undefined,
-        },
-      }))
+        images: product.images.map(mapProductImage),
+        seller: mapUser(user, profile),
+      })
     );
   }
 }

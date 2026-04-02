@@ -1,9 +1,9 @@
-import { JwtPayload } from '../utils/jwt.util';
+import type { AuthTokenPayload } from '@campus-market/shared';
 
 declare global {
   namespace Express {
     interface Request {
-      user?: JwtPayload;
+      user?: AuthTokenPayload;
     }
   }
 }

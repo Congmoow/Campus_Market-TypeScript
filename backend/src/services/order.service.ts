@@ -1,18 +1,43 @@
-import { prisma } from '../utils/prisma.util';
+import type {
+  Order as PrismaOrder,
+  Product as PrismaProduct,
+  ProductImage as PrismaProductImage,
+  User as PrismaUser,
+  UserProfile as PrismaUserProfile,
+} from '@prisma/client';
 import {
   CreateOrderRequest,
-  OrderWithDetails,
-  Order,
   MessageType,
-} from '../types/shared';
+  Order,
+  OrderStatus,
+  OrderWithDetails,
+  ProductWithDetails,
+} from '@campus-market/shared';
+import { prisma } from '../utils/prisma.util';
+import {
+  mapCategory,
+  mapProductBase,
+  mapProductImage,
+  mapUser,
+} from '../mappers/shared.mapper';
 import {
   BusinessException,
-  NotFoundException,
   ForbiddenException,
+  NotFoundException,
 } from '../utils/error.util';
 
+type ProductRecord = PrismaProduct & {
+  images: PrismaProductImage[];
+};
+
 export class OrderService {
-  private async generateOrderNo(db: any = prisma): Promise<string> {
+  private async generateOrderNo(
+    db: {
+      order: {
+        count: typeof prisma.order.count;
+      };
+    } = prisma
+  ): Promise<string> {
     const now = new Date();
     const dateStr =
       now.getFullYear().toString() +
@@ -83,185 +108,136 @@ export class OrderService {
     }
   }
 
-  private async convertOrder(order: any, includeDetails = false): Promise<any> {
-    const result: any = {
+  private mapOrderBase(order: PrismaOrder): Order {
+    return {
       id: Number(order.id),
-      orderNo: (order as any).order_no || `ORD${order.id}`,
+      orderNo: order.order_no || `ORD${order.id}`,
       productId: Number(order.productId),
       buyerId: Number(order.buyerId),
       sellerId: Number(order.sellerId),
-      totalAmount: Number(order.price_snapshot),
+      priceSnapshot: Number(order.price_snapshot),
       status: order.status,
-      deliveryAddress: order.meet_location || '',
-      deliveryPhone: '',
-      deliveryName: '',
-      remark: order.meet_time ? order.meet_time.toISOString() : undefined,
+      meetLocation: order.meet_location || undefined,
+      meetTime: order.meet_time || undefined,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     };
+  }
+
+  private async buildProductDetails(product: ProductRecord): Promise<ProductWithDetails> {
+    const [seller, sellerProfile, category] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: product.sellerId },
+      }),
+      prisma.userProfile.findUnique({
+        where: { userId: product.sellerId },
+      }),
+      product.categoryId
+        ? prisma.category.findUnique({
+            where: { id: product.categoryId },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      ...mapProductBase(product),
+      images: product.images.map(mapProductImage),
+      seller: seller
+        ? mapUser(seller, sellerProfile)
+        : {
+            id: Number(product.sellerId),
+            studentId: '',
+            createdAt: product.createdAt,
+            updatedAt: product.updatedAt,
+          },
+      category: category ? mapCategory(category) : undefined,
+    };
+  }
+
+  private async convertOrder(
+    order: PrismaOrder,
+    includeDetails = false
+  ): Promise<Order | OrderWithDetails> {
+    const result = this.mapOrderBase(order);
 
     if (!includeDetails) {
       return result;
     }
 
-    const product = await prisma.product.findUnique({
-      where: { id: order.productId },
-      include: { images: true },
-    });
+    const [product, buyer, buyerProfile, seller, sellerProfile] = await Promise.all([
+      prisma.product.findUnique({
+        where: { id: order.productId },
+        include: { images: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: order.buyerId },
+      }),
+      prisma.userProfile.findUnique({
+        where: { userId: order.buyerId },
+      }),
+      prisma.user.findUnique({
+        where: { id: order.sellerId },
+      }),
+      prisma.userProfile.findUnique({
+        where: { userId: order.sellerId },
+      }),
+    ]);
 
-    const buyer = await prisma.user.findUnique({
-      where: { id: order.buyerId },
-    });
-    const buyerProfile = await prisma.userProfile.findUnique({
-      where: { userId: order.buyerId },
-    });
-
-    const seller = await prisma.user.findUnique({
-      where: { id: order.sellerId },
-    });
-    const sellerProfile = await prisma.userProfile.findUnique({
-      where: { userId: order.sellerId },
-    });
-
-    let category = null;
-    if (product?.categoryId) {
-      category = await prisma.category.findUnique({
-        where: { id: product.categoryId },
-      });
-    }
-
-    result.product = product
-      ? {
-          id: Number(product.id),
-          title: product.title,
-          description: product.description,
-          price: Number(product.price),
-          originalPrice: product.originalPrice
-            ? Number(product.originalPrice)
-            : undefined,
-          categoryId: product.categoryId ? Number(product.categoryId) : undefined,
-          location: product.location || undefined,
-          status: product.status,
-          viewCount: Number(product.viewCount),
-          sellerId: Number(product.sellerId),
-          createdAt: product.createdAt,
-          updatedAt: product.updatedAt,
-          images: product.images.map((img: any) => ({
-            id: Number(img.id),
-            productId: Number(img.productId),
-            url: img.url,
-          })),
-          seller: {
-            id: Number(seller?.id || 0),
-            studentId: seller?.studentId || '',
-            email: seller?.phone || '',
-            role: seller?.role,
-            avatar: sellerProfile?.avatarUrl,
-            createdAt: seller?.createdAt || new Date(),
-            updatedAt: seller?.updatedAt || new Date(),
-            profile: sellerProfile
-              ? {
-                  id: Number(sellerProfile.id),
-                  userId: Number(sellerProfile.userId),
-                  name: sellerProfile.name || undefined,
-                  nickname: sellerProfile.name || undefined,
-                  studentId:
-                    sellerProfile.studentId || seller?.studentId || undefined,
-                  phone: seller?.phone || undefined,
-                  location: sellerProfile.campus || undefined,
-                  bio: sellerProfile.bio || undefined,
-                }
-              : undefined,
+    const detailedOrder: OrderWithDetails = {
+      ...result,
+      product: product ? await this.buildProductDetails(product) : undefined,
+      buyer: buyer
+        ? mapUser(buyer, buyerProfile)
+        : {
+            id: Number(order.buyerId),
+            studentId: '',
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt,
           },
-          category: category
-            ? {
-                id: Number(category.id),
-                name: category.name,
-                icon: undefined,
-              }
-            : undefined,
-        }
-      : undefined;
+      seller: seller
+        ? mapUser(seller, sellerProfile)
+        : {
+            id: Number(order.sellerId),
+            studentId: '',
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt,
+          },
+    };
 
     if (product) {
-      result.productTitle = product.title;
-      result.productImage =
-        product.images.length > 0 ? product.images[0].url : undefined;
-      result.productPrice = Number(product.price);
+      detailedOrder.productTitle = product.title;
+      detailedOrder.productImage = product.images[0]?.url;
+      detailedOrder.productPrice = Number(product.price);
     }
 
-    result.buyerName = buyerProfile?.name || buyer?.studentId || '';
-    result.buyerAvatar = buyerProfile?.avatarUrl;
-    result.sellerName = sellerProfile?.name || seller?.studentId || '';
-    result.sellerAvatar = sellerProfile?.avatarUrl;
+    detailedOrder.buyerName = buyerProfile?.name || buyer?.studentId || '';
+    detailedOrder.buyerAvatar = buyerProfile?.avatarUrl || undefined;
+    detailedOrder.sellerName = sellerProfile?.name || seller?.studentId || '';
+    detailedOrder.sellerAvatar = sellerProfile?.avatarUrl || undefined;
 
-    result.buyer = {
-      id: Number(buyer?.id || 0),
-      studentId: buyer?.studentId || '',
-      email: buyer?.phone || '',
-      role: buyer?.role,
-      avatar: buyerProfile?.avatarUrl,
-      createdAt: buyer?.createdAt || new Date(),
-      updatedAt: buyer?.updatedAt || new Date(),
-      profile: buyerProfile
-        ? {
-            id: Number(buyerProfile.id),
-            userId: Number(buyerProfile.userId),
-            name: buyerProfile.name || undefined,
-            nickname: buyerProfile.name || undefined,
-            studentId: buyerProfile.studentId || buyer?.studentId || undefined,
-            phone: buyer?.phone || undefined,
-            location: buyerProfile.campus || undefined,
-            bio: buyerProfile.bio || undefined,
-          }
-        : undefined,
-    };
-
-    result.seller = {
-      id: Number(seller?.id || 0),
-      studentId: seller?.studentId || '',
-      email: seller?.phone || '',
-      role: seller?.role,
-      avatar: sellerProfile?.avatarUrl,
-      createdAt: seller?.createdAt || new Date(),
-      updatedAt: seller?.updatedAt || new Date(),
-      profile: sellerProfile
-        ? {
-            id: Number(sellerProfile.id),
-            userId: Number(sellerProfile.userId),
-            name: sellerProfile.name || undefined,
-            nickname: sellerProfile.name || undefined,
-            studentId: sellerProfile.studentId || seller?.studentId || undefined,
-            phone: seller?.phone || undefined,
-            location: sellerProfile.campus || undefined,
-            bio: sellerProfile.bio || undefined,
-          }
-        : undefined,
-    };
-
-    return result;
+    return detailedOrder;
   }
 
   async createOrder(
     buyerId: number,
     data: CreateOrderRequest
   ): Promise<OrderWithDetails> {
-    if (!data.deliveryAddress || data.deliveryAddress.trim().length === 0) {
-      throw new BusinessException('收货地址不能为空');
+    if (!data.meetLocation || data.meetLocation.trim().length === 0) {
+      throw new BusinessException('交易地点不能为空');
     }
 
-    if (!data.deliveryPhone || data.deliveryPhone.trim().length === 0) {
-      throw new BusinessException('收货电话不能为空');
+    if (!data.contactPhone || data.contactPhone.trim().length === 0) {
+      throw new BusinessException('联系电话不能为空');
     }
 
-    if (!data.deliveryName || data.deliveryName.trim().length === 0) {
-      throw new BusinessException('收货人姓名不能为空');
+    if (!data.contactName || data.contactName.trim().length === 0) {
+      throw new BusinessException('联系人不能为空');
     }
 
     const productId = BigInt(data.productId);
-    let order: any;
+    let order!: PrismaOrder;
 
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({
         where: { id: productId },
       });
@@ -301,8 +277,8 @@ export class OrderService {
           buyerId: BigInt(buyerId),
           sellerId: product.sellerId,
           price_snapshot: product.price,
-          status: 'PENDING',
-          meet_location: data.deliveryAddress,
+          status: OrderStatus.PENDING,
+          meet_location: data.meetLocation,
           meet_time: now,
           createdAt: now,
           updatedAt: now,
@@ -314,10 +290,10 @@ export class OrderService {
       order.productId,
       buyerId,
       Number(order.sellerId),
-      '我已下单，请尽快发货'
+      '我已下单，请尽快确认交易安排'
     );
 
-    return this.convertOrder(order, true);
+    return this.convertOrder(order, true) as Promise<OrderWithDetails>;
   }
 
   async getOrderDetail(userId: number, orderId: number): Promise<OrderWithDetails> {
@@ -333,12 +309,12 @@ export class OrderService {
       throw new ForbiddenException('无权查看此订单');
     }
 
-    return this.convertOrder(order, true);
+    return this.convertOrder(order, true) as Promise<OrderWithDetails>;
   }
 
-  async getMyOrders(buyerId: number): Promise<Order[]> {
-    if (!buyerId || isNaN(buyerId)) {
-      throw new BusinessException('无效的用户ID');
+  async getMyOrders(buyerId: number): Promise<OrderWithDetails[]> {
+    if (!buyerId || Number.isNaN(buyerId)) {
+      throw new BusinessException('无效的用户 ID');
     }
 
     const orders = await prisma.order.findMany({
@@ -346,12 +322,14 @@ export class OrderService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return Promise.all(orders.map((order: any) => this.convertOrder(order, true)));
+    return Promise.all(
+      orders.map((order) => this.convertOrder(order, true) as Promise<OrderWithDetails>)
+    );
   }
 
-  async getMySalesOrders(sellerId: number): Promise<Order[]> {
-    if (!sellerId || isNaN(sellerId)) {
-      throw new BusinessException('无效的用户ID');
+  async getMySalesOrders(sellerId: number): Promise<OrderWithDetails[]> {
+    if (!sellerId || Number.isNaN(sellerId)) {
+      throw new BusinessException('无效的用户 ID');
     }
 
     const orders = await prisma.order.findMany({
@@ -359,7 +337,9 @@ export class OrderService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return Promise.all(orders.map((order: any) => this.convertOrder(order, true)));
+    return Promise.all(
+      orders.map((order) => this.convertOrder(order, true) as Promise<OrderWithDetails>)
+    );
   }
 
   async shipOrder(userId: number, orderId: number): Promise<OrderWithDetails> {
@@ -375,19 +355,19 @@ export class OrderService {
       throw new ForbiddenException('无权操作此订单');
     }
 
-    if (order.status !== 'PENDING') {
+    if (order.status !== OrderStatus.PENDING) {
       throw new BusinessException('订单状态不允许发货');
     }
 
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       const updated = await tx.order.updateMany({
         where: {
           id: BigInt(orderId),
           sellerId: BigInt(userId),
-          status: 'PENDING',
+          status: OrderStatus.PENDING,
         },
         data: {
-          status: 'SHIPPED',
+          status: OrderStatus.SHIPPED,
           updatedAt: new Date(),
         },
       });
@@ -401,7 +381,7 @@ export class OrderService {
       order.productId,
       userId,
       Number(order.buyerId),
-      '商品已发货，请注意查收'
+      '商品已发出，请注意查收'
     );
 
     return this.getOrderDetail(userId, orderId);
@@ -420,20 +400,20 @@ export class OrderService {
       throw new ForbiddenException('无权操作此订单');
     }
 
-    if (order.status !== 'SHIPPED') {
+    if (order.status !== OrderStatus.SHIPPED) {
       throw new BusinessException('订单状态不允许完成');
     }
 
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       const now = new Date();
       const updated = await tx.order.updateMany({
         where: {
           id: BigInt(orderId),
           buyerId: BigInt(userId),
-          status: 'SHIPPED',
+          status: OrderStatus.SHIPPED,
         },
         data: {
-          status: 'COMPLETED',
+          status: OrderStatus.COMPLETED,
           updatedAt: now,
         },
       });
@@ -455,7 +435,7 @@ export class OrderService {
       order.productId,
       userId,
       Number(order.sellerId),
-      '商品已收到，交易完成'
+      '商品已确认收货，交易完成'
     );
 
     return this.getOrderDetail(userId, orderId);
@@ -474,20 +454,23 @@ export class OrderService {
       throw new ForbiddenException('无权操作此订单');
     }
 
-    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
+    if (
+      order.status === OrderStatus.COMPLETED ||
+      order.status === OrderStatus.CANCELLED
+    ) {
       throw new BusinessException('订单状态不允许取消');
     }
 
-    await prisma.$transaction(async (tx: any) => {
+    await prisma.$transaction(async (tx) => {
       const now = new Date();
       const updated = await tx.order.updateMany({
         where: {
           id: BigInt(orderId),
-          status: { in: ['PENDING', 'SHIPPED'] },
+          status: { in: [OrderStatus.PENDING, OrderStatus.SHIPPED] },
           OR: [{ buyerId: BigInt(userId) }, { sellerId: BigInt(userId) }],
         },
         data: {
-          status: 'CANCELLED',
+          status: OrderStatus.CANCELLED,
           updatedAt: now,
         },
       });

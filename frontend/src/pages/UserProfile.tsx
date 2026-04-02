@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, MapPin, MessageCircle, ShieldCheck } from 'lucide-react';
 import Navbar from '../components/Navbar';
@@ -7,8 +7,8 @@ import ProductCard from '../components/ProductCard';
 import EditProfileModal from '../components/EditProfileModal';
 import { chatApi, userApi } from '../api';
 import { getStoredUser, isAuthenticated } from '../lib/auth';
-import { getUserAvatarUrl } from '../lib/user-display';
-import type { User, UserProfile as UserProfileType } from '../../../backend/src/types/shared';
+import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
+import type { ProductListItem, User, UserProfile as UserProfileType } from '@campus-market/shared';
 import welcomeSvg from '../assets/welcome.svg';
 
 const formatTime = (timeStr: string | Date): string => {
@@ -119,7 +119,7 @@ const getInitialProfile = (userId: string | undefined): ProfileData | null => {
   return {
     id: storedUserId,
     studentId: storedUser.studentId || '',
-    email: '',
+    phone: undefined,
     createdAt: storedUser.createdAt ? new Date(storedUser.createdAt) : new Date(0),
     updatedAt: new Date(0),
     name: storedUser.name || storedUser.nickname,
@@ -167,10 +167,7 @@ const syncCurrentUserCache = (profileData: ProfileData) => {
     nickname: displayName,
     studentId: profileData.studentId || storedUser.studentId,
     avatarUrl: getUserAvatarUrl(profileData) || storedUser.avatarUrl,
-    campus:
-      getProfileField(profileData, 'campus') ||
-      profileData.profile?.location ||
-      storedUser.campus,
+    campus: getProfileField(profileData, 'campus') || profileData.profile?.location || storedUser.campus,
     major: getProfileField(profileData, 'major') || storedUser.major,
     grade: getProfileField(profileData, 'grade') || storedUser.grade,
     bio: profileData.bio || profileData.profile?.bio || storedUser.bio,
@@ -193,10 +190,7 @@ const syncCurrentUserCache = (profileData: ProfileData) => {
 };
 
 const LoadingLine: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <span
-    aria-hidden="true"
-    className={`inline-block rounded bg-slate-200 animate-pulse align-middle ${className}`.trim()}
-  />
+  <span aria-hidden="true" className={`inline-block rounded bg-slate-200 animate-pulse align-middle ${className}`.trim()} />
 );
 
 const UserProfile: React.FC = () => {
@@ -232,7 +226,7 @@ const UserProfile: React.FC = () => {
 
     const targetProduct = products[0];
     if (!targetProduct) {
-      window.alert('该用户当前没有可联系的商品');
+      window.alert('该用户当前没有可联系的商品。');
       return;
     }
 
@@ -249,7 +243,7 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const loadProductsByStatus = async (status: ProductTab) => {
+  const loadProductsByStatus = async (status: ProductTab, activeProfile?: ProfileData | null) => {
     if (!id) return;
 
     try {
@@ -261,32 +255,32 @@ const UserProfile: React.FC = () => {
         return;
       }
 
-      const data = productsRes.data as any;
-      const list = Array.isArray(data) ? data : data?.content || [];
-      const mapped: MappedProduct[] = (list as any[]).map((product: any) => ({
+      const sourceProfile = activeProfile ?? profile;
+      const list = productsRes.data || [];
+      const mapped: MappedProduct[] = list.map((product: ProductListItem) => ({
         id: product.id,
         title: product.title,
         price: product.price,
-        description: '',
+        description: product.description || '',
         image:
-          product.thumbnail ||
           product.images?.[0]?.url ||
           'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800',
         location: product.location || '校内',
         timeAgo: formatTime(product.createdAt),
         seller: {
-          name: product.sellerName || profile?.name || profile?.studentId || '同学',
+          name: getUserDisplayName(product.seller, sourceProfile?.name || sourceProfile?.studentId || '同学'),
           avatar:
-            product.sellerAvatar ||
-            profile?.avatarUrl ||
-            profile?.avatar ||
-            `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,
+            getUserAvatarUrl(
+              product.seller,
+              getUserAvatarUrl(sourceProfile) ||
+                `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`
+            ) || '',
         },
       }));
 
       setProducts(mapped);
-    } catch (error) {
-      console.error('加载商品列表失败', error);
+    } catch (caughtError) {
+      console.error('加载商品列表失败', caughtError);
     } finally {
       setProductsLoading(false);
     }
@@ -299,21 +293,23 @@ const UserProfile: React.FC = () => {
 
     try {
       setProfileLoading(true);
-      setProfile(getInitialProfile(id));
+      const initialProfile = getInitialProfile(id);
+      setProfile(initialProfile);
       setActiveProductTab(initialTab);
 
       const profileRes = await userApi.getProfile(Number(id));
+      let nextProfile = initialProfile;
       if (profileRes.success && profileRes.data) {
-        const nextProfile = profileRes.data as ProfileData;
+        nextProfile = profileRes.data as ProfileData;
         setProfile(nextProfile);
         syncCurrentUserCache(nextProfile);
       } else {
         console.error(profileRes.message || '加载用户信息失败');
       }
 
-      await loadProductsByStatus(initialTab);
-    } catch (error) {
-      console.error('加载用户主页失败，请稍后重试', error);
+      await loadProductsByStatus(initialTab, nextProfile);
+    } catch (caughtError) {
+      console.error('加载用户主页失败，请稍后重试', caughtError);
     } finally {
       setProfileLoading(false);
     }
@@ -335,7 +331,6 @@ const UserProfile: React.FC = () => {
 
   const handleEditSuccess = (updatedProfile: ProfileData) => {
     setProfile(updatedProfile);
-
     try {
       syncCurrentUserCache(updatedProfile);
     } catch {
@@ -394,17 +389,11 @@ const UserProfile: React.FC = () => {
                 {profileLoading ? (
                   <div className="w-full h-full rounded-full bg-slate-200 animate-pulse" />
                 ) : avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt={profile?.nickname || profile?.studentId || '用户头像'}
-                    className="w-full h-full rounded-full bg-slate-100 object-cover"
-                  />
+                  <img src={avatarUrl} alt={displayName || '用户头像'} className="w-full h-full rounded-full bg-slate-100 object-cover" />
                 ) : (
                   <img
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${
-                      profile?.id || id || profile?.studentId || 'user'
-                    }`}
-                    alt={profile?.nickname || profile?.studentId || '用户头像'}
+                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.id || id || profile?.studentId || 'user'}`}
+                    alt={displayName || '用户头像'}
                     className="w-full h-full rounded-full bg-slate-100 object-cover"
                   />
                 )}
@@ -418,7 +407,7 @@ const UserProfile: React.FC = () => {
                     className="px-6 py-2.5 bg-blue-600 text-white rounded-full font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all flex items-center gap-2"
                   >
                     <MessageCircle size={18} />
-                    联系Ta
+                    联系 Ta
                   </button>
                 </div>
               )}
@@ -454,27 +443,19 @@ const UserProfile: React.FC = () => {
                         <LoadingLine className="h-4 w-28" />
                       ) : (
                         <>
-                          信用分：
-                          <span className="font-bold text-slate-900">{displayCredit}</span>{' '}
-                          (极好)
+                          信用分：<span className="font-bold text-slate-900">{displayCredit}</span>（良好）
                         </>
                       )}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin size={16} />
-                    <span>
-                      {profileLoading ? <LoadingLine className="h-4 w-20" /> : displayCampus || '校内'}
-                    </span>
+                    <span>{profileLoading ? <LoadingLine className="h-4 w-20" /> : displayCampus || '校内'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={16} />
                     <span>
-                      {profileLoading ? (
-                        <LoadingLine className="h-4 w-24" />
-                      ) : (
-                        displayJoinDate || '加入时间未知'
-                      )}
+                      {profileLoading ? <LoadingLine className="h-4 w-24" /> : displayJoinDate || '加入时间未知'}
                     </span>
                   </div>
                 </div>
@@ -489,9 +470,7 @@ const UserProfile: React.FC = () => {
                       <div className="h-4 w-4/5 rounded bg-slate-200 animate-pulse" />
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-500 leading-relaxed">
-                      这个同学还没有填写个人简介～
-                    </p>
+                    <p className="text-sm text-slate-500 leading-relaxed">这个同学还没有填写个人简介。</p>
                   )}
                 </div>
               </div>
@@ -526,9 +505,7 @@ const UserProfile: React.FC = () => {
                 <div className="grid sm:grid-cols-2 gap-4">
                   {productsLoading ? (
                     <div className="col-span-full text-center py-12 text-slate-400 text-sm">
-                      {activeProductTab === 'ON_SALE'
-                        ? '正在加载在售商品...'
-                        : '正在加载已卖出商品...'}
+                      {activeProductTab === 'ON_SALE' ? '正在加载在售商品...' : '正在加载已卖出商品...'}
                     </div>
                   ) : products.length === 0 ? (
                     <div className="col-span-full text-center py-12 text-slate-400 text-sm">

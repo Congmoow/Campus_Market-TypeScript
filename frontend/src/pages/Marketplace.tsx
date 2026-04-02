@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Filter } from 'lucide-react';
 import Slider from 'rc-slider';
 import 'rc-slider/assets/index.css';
-import type { ProductListItem } from '../../../backend/src/types/shared';
+import type { ProductListItem } from '@campus-market/shared';
 import { productApi } from '../api';
 import AuthModal from '../components/AuthModal';
 import Navbar from '../components/Navbar';
@@ -66,7 +66,11 @@ const mapToCardProduct = (product: ProductListItem): CardProduct => ({
   location: product.location || '校内',
   timeAgo: formatTimeAgo(product.createdAt),
   seller: {
-    name: product.seller?.profile?.nickname || product.seller?.studentId || '同学',
+    name:
+      product.seller?.profile?.name ||
+      product.seller?.profile?.nickname ||
+      product.seller?.studentId ||
+      '同学',
     avatar:
       product.seller?.avatar ||
       `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,
@@ -188,7 +192,7 @@ const Marketplace: React.FC = () => {
   const emptyStateText =
     visibleProducts.length === 0
       ? '当前没有在售商品，试试其他分类或稍后再来看看。'
-      : '没有符合当前价格区间的商品，试试调整筛选条件吧';
+      : '没有符合当前价格区间的商品，试试调整筛选条件吧。';
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -214,12 +218,9 @@ const Marketplace: React.FC = () => {
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-slate-900 mb-4">发现好物</h1>
 
-                <div className="flex flex-col gap-6">
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div
-                    data-testid="marketplace-category-bar"
-                    className="flex-1"
-                  >
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div data-testid="marketplace-category-bar" className="flex-1">
                     <div
                       data-testid="marketplace-category-list"
                       className="flex max-h-24 flex-wrap content-start gap-2"

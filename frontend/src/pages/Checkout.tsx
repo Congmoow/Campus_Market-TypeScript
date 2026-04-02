@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -15,7 +15,8 @@ import {
 import { motion } from 'framer-motion';
 import { productApi, orderApi, userApi } from '../api';
 import { getCurrentUser, isAuthenticated } from '../lib/auth';
-import { getUserDisplayName } from '../lib/user-display';
+import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
+import type { ProductWithDetails, User } from '@campus-market/shared';
 
 interface ProductDisplay {
   id: number;
@@ -32,6 +33,13 @@ interface BuyerContact {
   phone: string;
   campus?: string;
 }
+
+type CurrentUserLike = ReturnType<typeof getCurrentUser>;
+
+const getCampusValue = (user?: User | CurrentUserLike | null): string | undefined => {
+  if (!user) return undefined;
+  return user.profile?.campus || user.profile?.location || user.campus || user.location || undefined;
+};
 
 const Checkout: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -59,11 +67,7 @@ const Checkout: React.FC = () => {
   const handleAuthModalClose = () => {
     setShowAuthModal(false);
     if (!isAuthenticated()) {
-      if (id) {
-        navigate(`/product/${id}`);
-      } else {
-        navigate('/');
-      }
+      navigate(id ? `/product/${id}` : '/');
     }
   };
 
@@ -75,24 +79,27 @@ const Checkout: React.FC = () => {
         setPageError('');
         const res = await productApi.getDetail(Number(id));
         if (res.success && res.data) {
-          const p = res.data;
-          const images =
-            p.images && p.images.length > 0
-              ? p.images.map((img) => img.url)
-              : [
-                  'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800',
-                ];
+          const productDetail: ProductWithDetails = res.data;
+          const images = productDetail.images.length
+            ? productDetail.images.map((image) => image.url)
+            : [
+                'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800',
+              ];
           const sellerAvatar =
-            (p.seller as any)?.avatar ||
-            `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.sellerId || p.seller?.studentId || p.id}`;
+            getUserAvatarUrl(
+              productDetail.seller,
+              `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                String(productDetail.sellerId || productDetail.seller?.studentId || productDetail.id)
+              )}`
+            ) || '';
 
           setProduct({
-            id: p.id,
-            title: p.title,
-            price: p.price,
+            id: productDetail.id,
+            title: productDetail.title,
+            price: productDetail.price,
             image: images[0],
-            location: p.location || '校内',
-            seller: getUserDisplayName(p.seller, p.seller?.studentId || '同学'),
+            location: productDetail.location || '校内',
+            seller: getUserDisplayName(productDetail.seller, productDetail.seller?.studentId || '同学'),
             sellerAvatar,
           });
         } else {
@@ -105,42 +112,37 @@ const Checkout: React.FC = () => {
       }
     };
 
-    loadProduct();
+    void loadProduct();
   }, [id]);
 
   useEffect(() => {
     const loadBuyerContact = async () => {
-      const authUser: any = getCurrentUser();
+      const authUser = getCurrentUser();
       if (!authUser?.id) return;
 
       const fallbackName = getUserDisplayName(authUser, authUser.studentId || '同学');
       setBuyerContact({
         name: fallbackName,
         phone: authUser.phone || '',
-        campus: authUser.campus || '',
+        campus: getCampusValue(authUser) || '',
       });
 
       try {
-        const res = await userApi.getProfile(authUser.id);
+        const res = await userApi.getProfile(Number(authUser.id));
         if (res.success && res.data) {
           setBuyerContact({
             name: getUserDisplayName(res.data, fallbackName),
-            phone:
-              res.data.profile?.phone ||
-              (res.data as any).phone ||
-              res.data.email ||
-              authUser.phone ||
-              '',
-            campus: (res.data as any).campus || res.data.profile?.location || authUser.campus || '',
+            phone: res.data.profile?.phone || res.data.phone || authUser.phone || '',
+            campus: getCampusValue(res.data) || getCampusValue(authUser) || '',
           });
         }
       } catch {
-        // keep local fallback
+        // Keep local fallback data.
       }
     };
 
     if (isAuthenticated()) {
-      loadBuyerContact();
+      void loadBuyerContact();
     }
   }, []);
 
@@ -157,7 +159,7 @@ const Checkout: React.FC = () => {
       return;
     }
 
-    const deliveryAddress =
+    const meetLocation =
       tradeMethod === 'pickup'
         ? product.location
         : buyerContact.campus || '校内送货上门，具体地点请在聊天中确认';
@@ -167,18 +169,13 @@ const Checkout: React.FC = () => {
     try {
       const res = await orderApi.create({
         productId: product.id,
-        deliveryAddress,
-        deliveryPhone: buyerContact.phone,
-        deliveryName: buyerContact.name,
+        meetLocation,
+        contactPhone: buyerContact.phone,
+        contactName: buyerContact.name,
         remark: `tradeMethod=${tradeMethod};paymentMethod=${paymentMethod}`,
       });
       if (res.success && res.data) {
-        const orderId = res.data.id;
-        if (orderId) {
-          navigate(`/order-success?orderId=${orderId}`);
-        } else {
-          navigate('/order-success');
-        }
+        navigate(res.data.id ? `/order-success?orderId=${res.data.id}` : '/order-success');
       } else {
         setSubmitError(res.message || '提交订单失败，请稍后重试');
       }
@@ -214,7 +211,7 @@ const Checkout: React.FC = () => {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">确认订单</h1>
         </motion.div>
 
-        {loading && <div className="text-center text-slate-400 text-sm py-20">正在加载订单商品信息...</div>}
+        {loading && <div className="text-center text-slate-400 text-sm py-20">正在加载下单商品信息...</div>}
         {pageError && !loading && <div className="text-center text-red-500 text-sm py-20">{pageError}</div>}
 
         {!loading && !pageError && product && (
@@ -300,9 +297,7 @@ const Checkout: React.FC = () => {
                         </div>
                         <div>
                           <p className="font-bold text-slate-900">送货上门</p>
-                          <p className="text-sm text-slate-500">
-                            卖家在校内为你送货，当面验货后完成交易
-                          </p>
+                          <p className="text-sm text-slate-500">卖家在校内为你送货，当面验货后完成交易。</p>
                         </div>
                       </div>
                       <div
@@ -310,7 +305,9 @@ const Checkout: React.FC = () => {
                           tradeMethod === 'delivery' ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
                         }`}
                       >
-                        {tradeMethod === 'delivery' && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-2.5 h-2.5 rounded-full bg-white" />}
+                        {tradeMethod === 'delivery' && (
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-2.5 h-2.5 rounded-full bg-white" />
+                        )}
                       </div>
                     </motion.div>
 
@@ -332,7 +329,7 @@ const Checkout: React.FC = () => {
                         </div>
                         <div>
                           <p className="font-bold text-slate-900">线下自提</p>
-                          <p className="text-sm text-slate-500">在 {product.location} 约定地点，当面完成交易</p>
+                          <p className="text-sm text-slate-500">在 {product.location} 约定地点，当面完成交易。</p>
                         </div>
                       </div>
                       <div
@@ -340,7 +337,9 @@ const Checkout: React.FC = () => {
                           tradeMethod === 'pickup' ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
                         }`}
                       >
-                        {tradeMethod === 'pickup' && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-2.5 h-2.5 rounded-full bg-white" />}
+                        {tradeMethod === 'pickup' && (
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-2.5 h-2.5 rounded-full bg-white" />
+                        )}
                       </div>
                     </motion.div>
                   </div>
@@ -379,7 +378,7 @@ const Checkout: React.FC = () => {
                         </div>
                         <div>
                           <p className="font-bold text-slate-900">线下支付</p>
-                          <p className="text-sm text-slate-500">当面验货确认无误后，扫码转账给卖家</p>
+                          <p className="text-sm text-slate-500">当面验货确认无误后，扫码转账给卖家。</p>
                         </div>
                       </div>
 
@@ -388,7 +387,9 @@ const Checkout: React.FC = () => {
                           paymentMethod === 'offline' ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
                         }`}
                       >
-                        {paymentMethod === 'offline' && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-2.5 h-2.5 rounded-full bg-white" />}
+                        {paymentMethod === 'offline' && (
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-2.5 h-2.5 rounded-full bg-white" />
+                        )}
                       </div>
                     </motion.div>
 
@@ -398,7 +399,7 @@ const Checkout: React.FC = () => {
                       </div>
                       <div>
                         <p className="font-bold text-slate-900">在线支付</p>
-                        <p className="text-sm text-slate-500">暂未开放，敬请期待</p>
+                        <p className="text-sm text-slate-500">暂未开放，敬请期待。</p>
                       </div>
                     </div>
                   </div>
@@ -417,9 +418,7 @@ const Checkout: React.FC = () => {
                       <AlertCircle size={20} className="shrink-0 text-orange-600 mt-0.5" />
                       <p className="text-sm leading-relaxed font-medium">
                         <span className="block font-bold text-orange-900 mb-1">安全交易提示</span>
-                        为了保障您的资金安全，请务必在
-                        <span className="underline decoration-orange-300 underline-offset-2">当面验货确认商品无误后</span>
-                        再进行支付。切勿在未见面的情况下提前转账。
+                        为了保障你的资金安全，请务必在 <span className="underline decoration-orange-300 underline-offset-2">当面验货确认商品无误后</span> 再进行支付。切勿在未见面的情况下提前转账。
                       </p>
                     </div>
                   </motion.div>
@@ -478,7 +477,7 @@ const Checkout: React.FC = () => {
                       )}
                     </button>
 
-                    <p className="text-xs text-center text-slate-400 mt-4">点击即表示同意《校园集市交易规则》</p>
+                    <p className="text-xs text-center text-slate-400 mt-4">点击即表示同意《校园集市交易规则》。</p>
                   </motion.div>
                 </div>
               </div>

@@ -89,9 +89,9 @@ describe('OrderService transactionality', () => {
 
       const result = await orderService.createOrder(1, {
         productId: 10,
-        deliveryAddress: 'Library',
-        deliveryPhone: '13800138000',
-        deliveryName: 'Buyer',
+        meetLocation: 'Library',
+        contactPhone: '13800138000',
+        contactName: 'Buyer',
       });
 
       expect(result).toEqual({ id: 99, status: 'PENDING' });
@@ -135,13 +135,57 @@ describe('OrderService transactionality', () => {
       await expect(
         orderService.createOrder(1, {
           productId: 10,
-          deliveryAddress: 'Library',
-          deliveryPhone: '13800138000',
-          deliveryName: 'Buyer',
+          meetLocation: 'Library',
+          contactPhone: '13800138000',
+          contactName: 'Buyer',
         })
       ).rejects.toThrow(BusinessException);
 
       expect(tx.order.create).not.toHaveBeenCalled();
+    });
+
+    it('maps stored order fields to API order semantics', async () => {
+      const convertOrder = (orderService as unknown as {
+        convertOrder: (order: {
+          id: bigint;
+          order_no: string;
+          productId: bigint;
+          buyerId: bigint;
+          sellerId: bigint;
+          price_snapshot: number;
+          status: string;
+          meet_location: string | null;
+          meet_time: Date | null;
+          createdAt: Date;
+          updatedAt: Date;
+        }, includeDetails?: boolean) => Promise<unknown>;
+      }).convertOrder.bind(orderService);
+      const meetTime = new Date('2026-04-02T08:00:00.000Z');
+
+      const result = await convertOrder({
+        id: BigInt(8),
+        order_no: 'ORD20260402000001',
+        productId: BigInt(10),
+        buyerId: BigInt(1),
+        sellerId: BigInt(2),
+        price_snapshot: 88.5,
+        status: 'PENDING',
+        meet_location: 'Library',
+        meet_time: meetTime,
+        createdAt: meetTime,
+        updatedAt: meetTime,
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          orderNo: 'ORD20260402000001',
+          priceSnapshot: 88.5,
+          meetLocation: 'Library',
+          meetTime,
+        })
+      );
+      expect((result as Record<string, unknown>).totalAmount).toBeUndefined();
+      expect((result as Record<string, unknown>).deliveryAddress).toBeUndefined();
     });
   });
 

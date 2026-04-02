@@ -1,8 +1,5 @@
-import { ApiResponse } from '../types/shared';
+import type { ApiResponse } from '@campus-market/shared';
 
-/**
- * 成功响应
- */
 export function successResponse<T>(data: T, message?: string): ApiResponse<T> {
   return {
     success: true,
@@ -11,9 +8,6 @@ export function successResponse<T>(data: T, message?: string): ApiResponse<T> {
   };
 }
 
-/**
- * 错误响应
- */
 export function errorResponse(message: string): ApiResponse<null> {
   return {
     success: false,

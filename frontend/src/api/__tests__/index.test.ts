@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   authApi,
   productApi,
@@ -15,7 +15,7 @@ import type {
   CreateProductRequest,
   CreateOrderRequest,
   SendMessageRequest,
-} from '../../../../backend/src/types/shared';
+} from '@campus-market/shared';
 
 // Mock axios instance
 vi.mock('../axios', () => ({
@@ -36,7 +36,7 @@ describe('API Client Type Safety', () => {
   describe('authApi', () => {
     it('should call login with correct types', async () => {
       const loginData: LoginRequest = {
-        username: 'testuser',
+        studentId: '20230001',
         password: 'password123',
       };
 
@@ -46,8 +46,8 @@ describe('API Client Type Safety', () => {
           token: 'jwt-token',
           user: {
             id: 1,
-            username: 'testuser',
-            email: 'test@example.com',
+            studentId: '20230001',
+            phone: '13800138000',
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -65,9 +65,9 @@ describe('API Client Type Safety', () => {
 
     it('should call register with correct types', async () => {
       const registerData: RegisterRequest = {
-        username: 'newuser',
+        studentId: '20230002',
         password: 'password123',
-        email: 'new@example.com',
+        phone: '13800138001',
       };
 
       (request.post as any).mockResolvedValue({
@@ -83,7 +83,7 @@ describe('API Client Type Safety', () => {
     it('should call me endpoint', async () => {
       (request.get as any).mockResolvedValue({
         success: true,
-        data: { id: 1, username: 'testuser' },
+        data: { id: 1, studentId: '20230001' },
       });
 
       await authApi.me();
@@ -198,9 +198,9 @@ describe('API Client Type Safety', () => {
     it('should create order with correct types', async () => {
       const orderData: CreateOrderRequest = {
         productId: 1,
-        deliveryAddress: 'Test Address',
-        deliveryPhone: '1234567890',
-        deliveryName: 'Test Name',
+        meetLocation: 'Test Address',
+        contactPhone: '1234567890',
+        contactName: 'Test Name',
       };
 
       (request.post as any).mockResolvedValue({
@@ -353,3 +353,4 @@ describe('API Client Type Safety', () => {
     });
   });
 });
+

@@ -1,20 +1,47 @@
-﻿import { prisma } from '../utils/prisma.util';
+﻿import type {
+  Category as PrismaCategory,
+  Prisma,
+  Product as PrismaProduct,
+  ProductImage as PrismaProductImage,
+  User as PrismaUser,
+  UserProfile as PrismaUserProfile,
+} from '@prisma/client';
 import {
   CreateProductRequest,
-  UpdateProductRequest,
-  ProductStatus,
-  UpdateProductStatusRequest,
   PageResponse,
   ProductListItem,
+  ProductStatus,
   ProductWithDetails,
+  UpdateProductRequest,
+  UpdateProductStatusRequest,
   User,
-  UserProfile,
-} from '../types/shared';
-import { BusinessException, NotFoundException, ForbiddenException } from '../utils/error.util';
+} from '@campus-market/shared';
+import { prisma } from '../utils/prisma.util';
+import {
+  mapCategory,
+  mapProductBase,
+  mapProductImage,
+  mapUser,
+} from '../mappers/shared.mapper';
+import {
+  BusinessException,
+  ForbiddenException,
+  NotFoundException,
+} from '../utils/error.util';
 import {
   DEFAULT_PRODUCT_CATEGORY_NAMES,
   sortCategoryEntitiesByDefaultOrder,
 } from '../constants/product-categories';
+
+type ProductRecord = PrismaProduct & {
+  images: PrismaProductImage[];
+};
+
+type SellerLookup = {
+  sellers: Map<string, PrismaUser>;
+  profiles: Map<string, PrismaUserProfile>;
+  categories?: Map<string, PrismaCategory>;
+};
 
 export class ProductService {
   private async resolveCategoryId(
@@ -49,7 +76,11 @@ export class ProductService {
       return existingCategory.id;
     }
 
-    if (!DEFAULT_PRODUCT_CATEGORY_NAMES.includes(normalizedCategoryName as (typeof DEFAULT_PRODUCT_CATEGORY_NAMES)[number])) {
+    if (
+      !DEFAULT_PRODUCT_CATEGORY_NAMES.includes(
+        normalizedCategoryName as (typeof DEFAULT_PRODUCT_CATEGORY_NAMES)[number]
+      )
+    ) {
       throw new BusinessException('分类不存在');
     }
 
@@ -60,102 +91,112 @@ export class ProductService {
     return createdCategory.id;
   }
 
-  /**
-   * 杞崲 Prisma Product 涓哄叡浜被鍨?
-   * 浼樺寲锛氫娇鐢ㄩ鍔犺浇鐨勬暟鎹伩鍏?N+1 鏌ヨ
-   */
-  private async convertProduct(
-    product: any,
-    includeCategory: boolean = false,
-    preloadedSellers?: Map<string, any>,
-    preloadedProfiles?: Map<string, any>,
-    preloadedCategories?: Map<string, any>
-  ): Promise<any> {
-    // 鑾峰彇鍗栧淇℃伅锛堜紭鍏堜娇鐢ㄩ鍔犺浇鏁版嵁锛?
-    let seller = preloadedSellers?.get(product.sellerId.toString());
-    let sellerProfile = preloadedProfiles?.get(product.sellerId.toString());
-
-    if (!seller) {
-      seller = await prisma.user.findUnique({
-        where: { id: product.sellerId },
-      });
+  private async loadSellerLookup(products: ProductRecord[]): Promise<SellerLookup> {
+    const sellerIds = [...new Set(products.map((product) => product.sellerId))];
+    if (sellerIds.length === 0) {
+      return {
+        sellers: new Map(),
+        profiles: new Map(),
+      };
     }
 
-    if (!sellerProfile) {
-      sellerProfile = await prisma.userProfile.findFirst({
-        where: { userId: product.sellerId },
-      });
+    const [sellers, sellerProfiles] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: sellerIds } },
+      }),
+      prisma.userProfile.findMany({
+        where: { userId: { in: sellerIds } },
+      }),
+    ]);
+
+    return {
+      sellers: new Map(sellers.map((seller) => [seller.id.toString(), seller])),
+      profiles: new Map(sellerProfiles.map((profile) => [profile.userId.toString(), profile])),
+    };
+  }
+
+  private buildSeller(product: ProductRecord, lookup: SellerLookup): User {
+    const seller = lookup.sellers.get(product.sellerId.toString());
+    const sellerProfile = lookup.profiles.get(product.sellerId.toString());
+
+    if (seller) {
+      return mapUser(seller, sellerProfile);
     }
 
-    const result: any = {
-      id: Number(product.id),
-      title: product.title,
-      description: product.description,
-      price: Number(product.price),
-      originalPrice: product.originalPrice ? Number(product.originalPrice) : undefined,
-      categoryId: product.categoryId ? Number(product.categoryId) : undefined,
-      location: product.location || undefined,
-      status: product.status,
-      viewCount: Number(product.viewCount),
-      sellerId: Number(product.sellerId),
+    return {
+      id: Number(product.sellerId),
+      studentId: '',
+      phone: undefined,
+      role: undefined,
+      avatar: sellerProfile?.avatarUrl || undefined,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
-      images: product.images
-        ? product.images.map((img: any) => ({
-            id: Number(img.id),
-            productId: Number(img.productId),
-            url: img.url,
-          }))
-        : [],
-      seller: {
-        id: Number(seller?.id || 0),
-        studentId: seller?.studentId || '',
-        email: seller?.phone || '',
-        role: seller?.role,
-        avatar: sellerProfile?.avatarUrl,
-        createdAt: seller?.createdAt || new Date(),
-        updatedAt: seller?.updatedAt || new Date(),
-        profile: sellerProfile
-          ? {
-              id: Number(sellerProfile.id),
-              userId: Number(sellerProfile.userId),
-              name: sellerProfile.name || undefined,
-              nickname: sellerProfile.name || undefined,
-              studentId: sellerProfile.studentId || seller?.studentId || undefined,
-              phone: seller?.phone || undefined, // UserProfile 涓病鏈?phone 瀛楁
-              location: sellerProfile.campus || undefined,
-              bio: sellerProfile.bio || undefined,
-            }
-          : undefined,
-      },
+      profile: sellerProfile
+        ? {
+            id: Number(sellerProfile.id),
+            userId: Number(sellerProfile.userId),
+            name: sellerProfile.name || undefined,
+            studentId: sellerProfile.studentId || undefined,
+            campus: sellerProfile.campus || undefined,
+            avatarUrl: sellerProfile.avatarUrl || undefined,
+            major: sellerProfile.major || undefined,
+            grade: sellerProfile.grade || undefined,
+            bio: sellerProfile.bio || undefined,
+            nickname: sellerProfile.name || undefined,
+            location: sellerProfile.campus || undefined,
+          }
+        : undefined,
+    };
+  }
+
+  private async convertProduct(
+    product: ProductRecord,
+    includeCategory = false,
+    preloaded?: SellerLookup
+  ): Promise<ProductListItem | ProductWithDetails> {
+    let lookup = preloaded;
+    if (!lookup) {
+      const [seller, sellerProfile] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: product.sellerId },
+        }),
+        prisma.userProfile.findFirst({
+          where: { userId: product.sellerId },
+        }),
+      ]);
+
+      lookup = {
+        sellers: new Map(seller ? [[seller.id.toString(), seller]] : []),
+        profiles: new Map(
+          sellerProfile ? [[sellerProfile.userId.toString(), sellerProfile]] : []
+        ),
+      };
+    }
+
+    const result: ProductListItem | ProductWithDetails = {
+      ...mapProductBase(product),
+      images: (product.images ?? []).map(mapProductImage),
+      seller: this.buildSeller(product, lookup),
     };
 
     if (includeCategory && product.categoryId) {
-      let category = preloadedCategories?.get(product.categoryId.toString());
-      if (!category) {
-        category = await prisma.category.findUnique({
+      const category =
+        lookup.categories?.get(product.categoryId.toString()) ||
+        (await prisma.category.findUnique({
           where: { id: product.categoryId },
-        });
+        }));
+
+      if (category) {
+        (result as ProductWithDetails).category = mapCategory(category);
       }
-      result.category = category
-        ? {
-            id: Number(category.id),
-            name: category.name,
-            icon: undefined,
-          }
-        : undefined;
     }
 
     return result;
   }
 
-  /**
-   * 鑾峰彇鏈€鏂板晢鍝佸垪琛?
-   * 浼樺寲锛氭壒閲忛鍔犺浇鍗栧淇℃伅锛岄伩鍏?N+1 鏌ヨ
-   */
-  async getLatestProducts(limit: number = 20): Promise<ProductListItem[]> {
+  async getLatestProducts(limit = 20): Promise<ProductListItem[]> {
     const products = await prisma.product.findMany({
-      where: { status: 'ON_SALE' as any },
+      where: { status: ProductStatus.ON_SALE },
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {
@@ -163,27 +204,10 @@ export class ProductService {
       },
     });
 
-    // 鎵归噺棰勫姞杞藉崠瀹朵俊鎭?
-    const sellerIds = [...new Set(products.map((p: any) => p.sellerId))];
-    const sellers = await prisma.user.findMany({
-      where: { id: { in: sellerIds } },
-    });
-    const sellerProfiles = await prisma.userProfile.findMany({
-      where: { userId: { in: sellerIds } },
-    });
-
-    const sellerMap = new Map<string, any>(sellers.map((s: any) => [s.id.toString(), s]));
-    const profileMap = new Map<string, any>(sellerProfiles.map((p: any) => [p.userId.toString(), p]));
-
-    return Promise.all(
-      products.map((p: any) => this.convertProduct(p, false, sellerMap, profileMap))
-    );
+    const lookup = await this.loadSellerLookup(products);
+    return Promise.all(products.map((product) => this.convertProduct(product, false, lookup)));
   }
 
-  /**
-   * 鑾峰彇鍟嗗搧鍒楄〃锛堟敮鎸佸垎椤点€佺瓫閫夈€佹帓搴忥級
-   * 浼樺寲锛氭壒閲忛鍔犺浇鍗栧淇℃伅锛岄伩鍏?N+1 鏌ヨ
-   */
   async getProductList(params: {
     categoryId?: number;
     keyword?: string;
@@ -195,7 +219,7 @@ export class ProductService {
   }): Promise<PageResponse<ProductListItem>> {
     const { categoryId, keyword, minPrice, maxPrice, sort, page, size } = params;
 
-    const where: any = { status: 'ON_SALE' as any };
+    const where: Prisma.ProductWhereInput = { status: ProductStatus.ON_SALE };
     if (categoryId) where.categoryId = BigInt(categoryId);
     if (minPrice !== undefined || maxPrice !== undefined) {
       where.price = {
@@ -210,11 +234,14 @@ export class ProductService {
       ];
     }
 
-    const orderBy: any = {};
-    if (sort === 'priceAsc') orderBy.price = 'asc';
-    else if (sort === 'priceDesc') orderBy.price = 'desc';
-    else if (sort === 'viewDesc') orderBy.viewCount = 'desc';
-    else orderBy.createdAt = 'desc';
+    const orderBy: Prisma.ProductOrderByWithRelationInput =
+      sort === 'priceAsc'
+        ? { price: 'asc' }
+        : sort === 'priceDesc'
+          ? { price: 'desc' }
+          : sort === 'viewDesc'
+            ? { viewCount: 'desc' }
+            : { createdAt: 'desc' };
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
@@ -229,20 +256,9 @@ export class ProductService {
       prisma.product.count({ where }),
     ]);
 
-    // 鎵归噺棰勫姞杞藉崠瀹朵俊鎭?
-    const sellerIds = [...new Set(products.map((p: any) => p.sellerId))];
-    const sellers = await prisma.user.findMany({
-      where: { id: { in: sellerIds } },
-    });
-    const sellerProfiles = await prisma.userProfile.findMany({
-      where: { userId: { in: sellerIds } },
-    });
-
-    const sellerMap = new Map<string, any>(sellers.map((s: any) => [s.id.toString(), s]));
-    const profileMap = new Map<string, any>(sellerProfiles.map((p: any) => [p.userId.toString(), p]));
-
+    const lookup = await this.loadSellerLookup(products);
     const content = await Promise.all(
-      products.map((p: any) => this.convertProduct(p, false, sellerMap, profileMap))
+      products.map((product) => this.convertProduct(product, false, lookup))
     );
 
     return {
@@ -254,9 +270,6 @@ export class ProductService {
     };
   }
 
-  /**
-   * 鑾峰彇鍟嗗搧璇︽儏
-   */
   async getProductDetail(productId: number): Promise<ProductWithDetails> {
     const product = await prisma.product.findUnique({
       where: { id: BigInt(productId) },
@@ -269,28 +282,27 @@ export class ProductService {
       throw new NotFoundException('商品不存在');
     }
 
-    return this.convertProduct(product, true);
+    return this.convertProduct(product, true) as Promise<ProductWithDetails>;
   }
 
-  /**
-   * 鍒涘缓鍟嗗搧
-   */
-  async createProduct(userId: number, data: CreateProductRequest | any): Promise<ProductWithDetails> {
-    // 涓氬姟閫昏緫楠岃瘉
+  async createProduct(
+    userId: number,
+    data: CreateProductRequest
+  ): Promise<ProductWithDetails> {
     if (data.price <= 0) {
       throw new BusinessException('价格必须大于0');
     }
 
     if (data.originalPrice != null && data.originalPrice < data.price) {
-      throw new BusinessException('鍘熶环涓嶈兘浣庝簬鐜颁环');
+      throw new BusinessException('原价不能低于现价');
     }
 
     if (!data.title || data.title.trim().length === 0) {
-      throw new BusinessException('鍟嗗搧鏍囬涓嶈兘涓虹┖');
+      throw new BusinessException('商品标题不能为空');
     }
 
     if (!data.description || data.description.trim().length === 0) {
-      throw new BusinessException('鍟嗗搧鎻忚堪涓嶈兘涓虹┖');
+      throw new BusinessException('商品描述不能为空');
     }
 
     const categoryId = (await this.resolveCategoryId(data)) ?? null;
@@ -301,13 +313,13 @@ export class ProductService {
         description: data.description,
         price: data.price,
         originalPrice: data.originalPrice,
-        categoryId: categoryId,
+        categoryId,
         location: data.location,
         sellerId: BigInt(userId),
-        status: 'ON_SALE' as any,
+        status: ProductStatus.ON_SALE,
         viewCount: BigInt(0),
         images: {
-          create: (data.images || []).map((url: string) => ({ url })),
+          create: (data.images || []).map((url) => ({ url })),
         },
       },
       include: {
@@ -318,9 +330,6 @@ export class ProductService {
     return this.getProductDetail(Number(product.id));
   }
 
-  /**
-   * 鏇存柊鍟嗗搧
-   */
   async updateProduct(
     userId: number,
     productId: number,
@@ -338,18 +347,18 @@ export class ProductService {
       throw new ForbiddenException('无权修改此商品');
     }
 
-    // 涓氬姟閫昏緫楠岃瘉
     if (data.price !== undefined && data.price <= 0) {
       throw new BusinessException('价格必须大于0');
     }
 
     const nextPrice = data.price !== undefined ? data.price : Number(product.price);
     if (data.originalPrice != null && data.originalPrice < nextPrice) {
-      throw new BusinessException('鍘熶环涓嶈兘浣庝簬鐜颁环');
+      throw new BusinessException('原价不能低于现价');
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.ProductUpdateInput = {};
     const resolvedCategoryId = await this.resolveCategoryId(data);
+
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.price !== undefined) updateData.price = data.price;
@@ -362,7 +371,6 @@ export class ProductService {
       data: updateData,
     });
 
-    // 濡傛灉鏇存柊浜嗗浘鐗囷紝鍒犻櫎鏃у浘鐗囧苟鍒涘缓鏂板浘鐗?
     if (data.images !== undefined) {
       await prisma.productImage.deleteMany({
         where: { productId: BigInt(productId) },
@@ -371,7 +379,7 @@ export class ProductService {
       if (data.images.length > 0) {
         await prisma.productImage.createMany({
           data: data.images.map((url) => ({
-            productId: BigInt(productId) as any,
+            productId: BigInt(productId),
             url,
           })),
         });
@@ -381,9 +389,6 @@ export class ProductService {
     return this.getProductDetail(productId);
   }
 
-  /**
-   * 鍒犻櫎鍟嗗搧锛堣蒋鍒犻櫎锛?
-   */
   async deleteProduct(userId: number, productId: number): Promise<void> {
     const product = await prisma.product.findUnique({
       where: { id: BigInt(productId) },
@@ -399,13 +404,10 @@ export class ProductService {
 
     await prisma.product.update({
       where: { id: BigInt(productId) },
-      data: { status: 'DELETED' },
+      data: { status: ProductStatus.DELETED },
     });
   }
 
-  /**
-   * 鏇存柊鍟嗗搧鐘舵€?
-   */
   async updateProductStatus(
     userId: number,
     productId: number,
@@ -425,15 +427,12 @@ export class ProductService {
 
     await prisma.product.update({
       where: { id: BigInt(productId) },
-      data: { status: data.status as any },
+      data: { status: data.status },
     });
 
     return this.getProductDetail(productId);
   }
 
-  /**
-   * 澧炲姞娴忚閲?
-   */
   async increaseViewCount(productId: number): Promise<void> {
     await prisma.product.update({
       where: { id: BigInt(productId) },
@@ -441,15 +440,12 @@ export class ProductService {
     });
   }
 
-  /**
-   * 鑾峰彇鍒嗙被鍒楄〃
-   */
   async getCategoryList(): Promise<Array<{ id: number; name: string; icon?: string }>> {
     const categories = await prisma.category.findMany({
       orderBy: { id: 'asc' },
     });
 
-    const existingCategoryNames = new Set(categories.map((category: any) => category.name));
+    const existingCategoryNames = new Set(categories.map((category) => category.name));
     const missingDefaultCategories = DEFAULT_PRODUCT_CATEGORY_NAMES.filter(
       (name) => !existingCategoryNames.has(name)
     );
@@ -462,22 +458,16 @@ export class ProductService {
       )
     );
 
-    return sortCategoryEntitiesByDefaultOrder([...categories, ...createdCategories]).map((category: any) => ({
-      id: Number(category.id),
-      name: category.name,
-      icon: undefined, // 鏁版嵁搴撲腑娌℃湁 icon 瀛楁
-    }));
+    return sortCategoryEntitiesByDefaultOrder([...categories, ...createdCategories]).map(
+      mapCategory
+    );
   }
 
-  /**
-   * 鑾峰彇鐢ㄦ埛鐨勫晢鍝佸垪琛?
-   * 浼樺寲锛氭壒閲忛鍔犺浇鍗栧淇℃伅锛岄伩鍏?N+1 鏌ヨ
-   */
   async getUserProducts(userId: number): Promise<ProductListItem[]> {
     const products = await prisma.product.findMany({
       where: {
-        sellerId: BigInt(userId) as any,
-        status: { not: 'DELETED' as any },
+        sellerId: BigInt(userId),
+        status: { not: ProductStatus.DELETED },
       },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -485,20 +475,7 @@ export class ProductService {
       },
     });
 
-    // 鎵归噺棰勫姞杞藉崠瀹朵俊鎭紙铏界劧閮芥槸鍚屼竴涓敤鎴凤紝浣嗕繚鎸佷竴鑷存€э級
-    const sellerIds = [...new Set(products.map((p: any) => p.sellerId))];
-    const sellers = await prisma.user.findMany({
-      where: { id: { in: sellerIds } },
-    });
-    const sellerProfiles = await prisma.userProfile.findMany({
-      where: { userId: { in: sellerIds } },
-    });
-
-    const sellerMap = new Map<string, any>(sellers.map((s: any) => [s.id.toString(), s]));
-    const profileMap = new Map<string, any>(sellerProfiles.map((p: any) => [p.userId.toString(), p]));
-
-    return Promise.all(
-      products.map((p: any) => this.convertProduct(p, false, sellerMap, profileMap))
-    );
+    const lookup = await this.loadSellerLookup(products);
+    return Promise.all(products.map((product) => this.convertProduct(product, false, lookup)));
   }
 }

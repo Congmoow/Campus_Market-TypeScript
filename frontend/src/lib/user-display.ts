@@ -1,4 +1,4 @@
-type DisplayNameProfile = {
+﻿type DisplayNameProfile = {
   name?: string | null;
   nickname?: string | null;
   studentId?: string | null;

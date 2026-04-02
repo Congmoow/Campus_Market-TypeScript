@@ -1,14 +1,15 @@
-import { prisma } from '../utils/prisma.util';
-import { hashPassword, comparePassword } from '../utils/password.util';
-import { generateToken } from '../utils/jwt.util';
-import {
+import type { User as PrismaUser, UserProfile as PrismaUserProfile } from '@prisma/client';
+import type {
+  AuthResponse,
   LoginRequest,
   RegisterRequest,
-  AuthResponse,
-  User,
-  UserProfile,
   ResetPasswordRequest,
-} from '../types/shared';
+  User,
+} from '@campus-market/shared';
+import { prisma } from '../utils/prisma.util';
+import { mapUser } from '../mappers/shared.mapper';
+import { hashPassword, comparePassword } from '../utils/password.util';
+import { generateToken } from '../utils/jwt.util';
 import {
   BusinessException,
   UnauthorizedException,
@@ -47,38 +48,40 @@ export class AuthService {
     const hashedPassword = await hashPassword(data.password);
 
     try {
-      const { user, profile } = await prisma.$transaction(async (tx: any) => {
-        const now = new Date();
-        const user = await tx.user.create({
-          data: {
-            studentId: data.studentId,
-            passwordHash: hashedPassword,
-            phone: data.phone || null,
-            role: 'USER',
-            enabled: true,
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
+      const { user, profile } = await prisma.$transaction(
+        async (tx) => {
+          const now = new Date();
+          const user = await tx.user.create({
+            data: {
+              studentId: data.studentId,
+              passwordHash: hashedPassword,
+              phone: data.phone || null,
+              role: 'USER',
+              enabled: true,
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
 
-        const profile = await tx.userProfile.create({
-          data: {
-            userId: user.id,
-            name: data.name || data.studentId,
-            studentId: data.studentId,
-            credit: 700,
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
+          const profile = await tx.userProfile.create({
+            data: {
+              userId: user.id,
+              name: data.name || data.studentId,
+              studentId: data.studentId,
+              credit: 700,
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
 
-        return { user, profile };
-      });
+          return { user, profile };
+        }
+      );
 
       const token = generateToken({
         id: Number(user.id),
         studentId: user.studentId,
-        email: user.phone || '',
+        phone: user.phone || undefined,
         role: user.role,
       });
 
@@ -123,17 +126,17 @@ export class AuthService {
     const token = generateToken({
       id: Number(user.id),
       studentId: user.studentId,
-      email: user.phone || '',
+      phone: user.phone || undefined,
       role: user.role,
     });
 
     return {
       token,
-      user: this.formatUserResponse(user, profile || undefined),
+      user: this.formatUserResponse(user, profile),
     };
   }
 
-  async getCurrentUser(userId: number): Promise<User & { profile?: UserProfile }> {
+  async getCurrentUser(userId: number): Promise<User> {
     const user = await prisma.user.findUnique({
       where: { id: BigInt(userId) },
     });
@@ -146,7 +149,7 @@ export class AuthService {
       where: { userId: user.id },
     });
 
-    return this.formatUserResponse(user, profile || undefined);
+    return this.formatUserResponse(user, profile);
   }
 
   async resetPassword(userId: number, data: ResetPasswordRequest): Promise<void> {
@@ -155,7 +158,7 @@ export class AuthService {
     }
 
     if (data.newPassword.length < 6) {
-      throw new ValidationException('新密码长度不能少于6位');
+      throw new ValidationException('新密码长度不能少于 6 位');
     }
 
     const user = await prisma.user.findUnique({
@@ -192,11 +195,11 @@ export class AuthService {
     }
 
     if (data.studentId.length < 8 || data.studentId.length > 20) {
-      throw new ValidationException('学号长度必须在8到20个字符之间');
+      throw new ValidationException('学号长度必须在 8 到 20 个字符之间');
     }
 
     if (!data.password || data.password.length < 6) {
-      throw new ValidationException('密码长度不能少于6位');
+      throw new ValidationException('密码长度不能少于 6 位');
     }
 
     if (data.phone && !/^1[3-9]\d{9}$/.test(data.phone)) {
@@ -226,32 +229,9 @@ export class AuthService {
   }
 
   private formatUserResponse(
-    user: any,
-    profile?: any
-  ): User & { profile?: UserProfile } {
-    const formattedUser: User & { profile?: UserProfile } = {
-      id: Number(user.id),
-      studentId: user.studentId,
-      email: user.phone || '',
-      role: user.role,
-      avatar: profile?.avatarUrl,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-
-    if (profile) {
-      formattedUser.profile = {
-        id: Number(profile.id),
-        userId: Number(profile.userId),
-        name: profile.name,
-        nickname: profile.name,
-        studentId: profile.studentId || undefined,
-        phone: user.phone || undefined,
-        location: profile.campus || undefined,
-        bio: profile.bio || undefined,
-      };
-    }
-
-    return formattedUser;
+    user: PrismaUser,
+    profile?: PrismaUserProfile | null
+  ): User {
+    return mapUser(user, profile);
   }
 }

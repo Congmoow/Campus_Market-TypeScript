@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import { CheckCircle2, MessageCircle, ArrowRight } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { orderApi, chatApi } from '../api';
-import type { OrderWithDetails } from '../../../backend/src/types/shared';
+import type { OrderWithDetails } from '@campus-market/shared';
 
 const OrderSuccess: React.FC = () => {
   const location = useLocation();
@@ -28,36 +28,31 @@ const OrderSuccess: React.FC = () => {
         } else {
           setError(res.message || '加载订单详情失败');
         }
-      } catch (e) {
-        console.error('加载订单详情失败', e);
+      } catch (caughtError) {
+        console.error('加载订单详情失败', caughtError);
         setError('加载订单详情失败，请稍后重试');
       } finally {
         setLoading(false);
       }
     };
 
-    loadOrder();
+    void loadOrder();
   }, [orderId]);
 
   const handleContactSeller = async () => {
-    if (!order || !order.productId) {
+    if (!order?.productId) {
       navigate('/chat');
       return;
     }
     try {
       const res = await chatApi.startChat(order.productId);
       if (res.success && res.data) {
-        const sessionId = res.data.id;
-        if (sessionId) {
-          navigate(`/chat?sessionId=${sessionId}`);
-        } else {
-          navigate('/chat');
-        }
+        navigate(res.data.id ? `/chat?sessionId=${res.data.id}` : '/chat');
       } else {
         alert(res.message || '发起聊天失败，请稍后重试');
       }
-    } catch (e) {
-      console.error('发起聊天失败', e);
+    } catch (caughtError) {
+      console.error('发起聊天失败', caughtError);
       alert('发起聊天失败，请稍后重试');
     }
   };
@@ -65,36 +60,35 @@ const OrderSuccess: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
-      
+
       <div className="pt-32 max-w-2xl mx-auto px-4 sm:px-6 flex flex-col items-center text-center">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 20 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
           className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-6"
         >
           <CheckCircle2 size={48} />
         </motion.div>
-        
-        <motion.h1 
+
+        <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           className="text-3xl font-bold text-slate-900 mb-4"
         >
-          拍下成功！
+          下单成功
         </motion.h1>
-        
-        <motion.p 
+
+        <motion.p
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           className="text-slate-500 text-lg mb-8 max-w-md"
         >
-          请尽快联系卖家确认交易时间和地点。记得在当面交易时仔细检查商品哦。
+          请尽快联系卖家确认交易时间和地点，线下交易时记得先验货再付款。
         </motion.p>
 
-        {/* Order brief info */}
         {orderId && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -102,12 +96,8 @@ const OrderSuccess: React.FC = () => {
             transition={{ delay: 0.35 }}
             className="w-full mb-8"
           >
-            {loading && (
-              <div className="text-xs text-slate-400 py-3">正在加载订单信息...</div>
-            )}
-            {!loading && error && (
-              <div className="text-xs text-red-500 py-3">{error}</div>
-            )}
+            {loading && <div className="text-xs text-slate-400 py-3">正在加载订单信息...</div>}
+            {!loading && error && <div className="text-xs text-red-500 py-3">{error}</div>}
             {!loading && !error && order && (
               <div className="w-full text-left bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-3 text-sm text-slate-600 flex flex-col gap-1">
                 <div className="flex justify-between">
@@ -116,18 +106,20 @@ const OrderSuccess: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">商品</span>
-                  <span className="font-medium text-slate-900 line-clamp-1 max-w-[60%] text-right">{order.product?.title || '商品'}</span>
+                  <span className="font-medium text-slate-900 line-clamp-1 max-w-[60%] text-right">
+                    {order.product?.title || order.productTitle || '商品'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">金额</span>
-                  <span className="font-semibold text-blue-600">¥{order.totalAmount}</span>
+                  <span className="font-semibold text-blue-600">¥{order.priceSnapshot}</span>
                 </div>
               </div>
             )}
           </motion.div>
         )}
-        
-        <motion.div 
+
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45 }}
@@ -140,7 +132,7 @@ const OrderSuccess: React.FC = () => {
             <MessageCircle size={20} />
             联系卖家
           </button>
-          
+
           <Link to={orderId ? `/order/${orderId}` : '/my-orders'} className="block w-full">
             <button className="w-full py-4 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl font-bold border border-slate-200 transition-all flex items-center justify-center gap-2">
               查看订单详情

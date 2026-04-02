@@ -88,9 +88,14 @@ describe('AuthService', () => {
 
       expect(result.token).toBe('mock-jwt-token');
       expect(result.user.studentId).toBe('20240001');
-      expect(result.user.email).toBe('13800138000');
+      expect(result.user.phone).toBe('13800138000');
       expect(result.user.profile?.name).toBe('Test User');
       expect(result.user.profile?.nickname).toBe('Test User');
+      expect(generateToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: '13800138000',
+        })
+      );
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { studentId: '20240001' },
       });

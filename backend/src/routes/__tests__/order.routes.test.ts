@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import request from 'supertest';
 import { errorHandler } from '../../middlewares/error.middleware';
 
@@ -48,9 +48,9 @@ describe('order route validation', () => {
   it('rejects invalid order creation payloads', async () => {
     const response = await request(app).post('/orders').send({
       productId: 'abc',
-      deliveryAddress: '',
-      deliveryPhone: '',
-      deliveryName: '',
+      meetLocation: '',
+      contactPhone: '',
+      contactName: '',
     });
 
     expect(response.status).toBe(400);
@@ -64,3 +64,4 @@ describe('order route validation', () => {
     expect(mockOrderControllerHandlers.getMyOrders).not.toHaveBeenCalled();
   });
 });
+

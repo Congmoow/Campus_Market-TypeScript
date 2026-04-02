@@ -1,21 +1,22 @@
-import React, { useEffect, useState, useMemo } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { motion, AnimatePresence } from 'framer-motion';
 import LazyLottie from '../components/LazyLottie';
-import { 
-  ChevronLeft, 
-  Package, 
-  Clock, 
-  MessageCircle, 
-  CheckCircle, 
-  Truck, 
-  Copy, 
+import {
+  ChevronLeft,
+  Package,
+  Clock,
+  MessageCircle,
+  CheckCircle,
+  Truck,
+  Copy,
   AlertCircle,
-  XCircle
+  XCircle,
 } from 'lucide-react';
 import { orderApi, chatApi } from '../api';
-import type { OrderWithDetails, OrderStatus, MessageType } from '../../../backend/src/types/shared';
+import type { OrderStatus, OrderWithDetails } from '@campus-market/shared';
+import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
 
 interface StatusConfig {
   label: string;
@@ -60,6 +61,61 @@ const getStatusAnimationConfig = (status: OrderStatus): StatusAnimationConfig | 
   }
 };
 
+const getStatusConfig = (status: OrderStatus | string): StatusConfig => {
+  switch (status) {
+    case 'PENDING':
+      return {
+        label: '待交易',
+        desc: '等待双方线下确认，请保持沟通。',
+        color: 'text-orange-600',
+        bg: 'bg-orange-50',
+        border: 'border-orange-100',
+        icon: Clock,
+        progress: 1,
+      };
+    case 'SHIPPED':
+      return {
+        label: '交易中',
+        desc: '卖家已发货或准备交接，请及时确认。',
+        color: 'text-blue-600',
+        bg: 'bg-blue-50',
+        border: 'border-blue-100',
+        icon: Truck,
+        progress: 2,
+      };
+    case 'COMPLETED':
+      return {
+        label: '已完成',
+        desc: '交易顺利完成，欢迎继续逛校园市场。',
+        color: 'text-emerald-600',
+        bg: 'bg-emerald-50',
+        border: 'border-emerald-100',
+        icon: CheckCircle,
+        progress: 3,
+      };
+    case 'CANCELLED':
+      return {
+        label: '已取消',
+        desc: '该订单已取消。',
+        color: 'text-slate-500',
+        bg: 'bg-slate-100',
+        border: 'border-slate-200',
+        icon: Package,
+        progress: 0,
+      };
+    default:
+      return {
+        label: status,
+        desc: '当前状态暂不可识别。',
+        color: 'text-slate-600',
+        bg: 'bg-slate-50',
+        border: 'border-slate-200',
+        icon: Package,
+        progress: 0,
+      };
+  }
+};
+
 const OrderDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -83,14 +139,15 @@ const OrderDetail: React.FC = () => {
         } else {
           setError(res.message || '加载订单详情失败');
         }
-      } catch (e) {
-        console.error('加载订单详情失败', e);
+      } catch (caughtError) {
+        console.error('加载订单详情失败', caughtError);
         setError('加载订单详情失败，请稍后重试');
       } finally {
         setLoading(false);
       }
     };
-    loadOrder();
+
+    void loadOrder();
   }, [id]);
 
   useEffect(() => {
@@ -99,7 +156,7 @@ const OrderDetail: React.FC = () => {
       return;
     }
 
-    const statusAnimationConfig = getStatusAnimationConfig(order.status);
+    const statusAnimationConfig = getStatusAnimationConfig(order.status as OrderStatus);
     if (!statusAnimationConfig) {
       setStatusAnimationData(null);
       return;
@@ -107,15 +164,15 @@ const OrderDetail: React.FC = () => {
 
     let cancelled = false;
 
-    statusAnimationConfig
+    void statusAnimationConfig
       .load()
       .then((module) => {
         if (!cancelled) {
           setStatusAnimationData(module.default);
         }
       })
-      .catch((error) => {
-        console.error('Failed to load order status animation', error);
+      .catch((caughtError) => {
+        console.error('Failed to load order status animation', caughtError);
         if (!cancelled) {
           setStatusAnimationData(null);
         }
@@ -127,20 +184,19 @@ const OrderDetail: React.FC = () => {
   }, [order]);
 
   const handleContact = async () => {
-    if (!order || !order.productId) {
+    if (!order?.productId) {
       navigate('/chat');
       return;
     }
     try {
       const res = await chatApi.startChat(order.productId);
       if (res.success && res.data) {
-        const sessionId = res.data.id;
-        navigate(sessionId ? `/chat?sessionId=${sessionId}` : '/chat');
+        navigate(res.data.id ? `/chat?sessionId=${res.data.id}` : '/chat');
       } else {
         navigate('/chat');
       }
-    } catch (e) {
-      console.error('发起聊天失败', e);
+    } catch (caughtError) {
+      console.error('发起聊天失败', caughtError);
       navigate('/chat');
     }
   };
@@ -151,12 +207,12 @@ const OrderDetail: React.FC = () => {
       setShipLoading(true);
       const res = await orderApi.ship(order.id);
       if (res.success && res.data) {
-        setOrder(prev => prev ? ({ ...prev, status: res.data.status }) : null);
+        setOrder((prev) => (prev ? { ...prev, status: res.data.status } : null));
       } else {
         alert(res.message || '发货失败');
       }
-    } catch (e) {
-      console.error('发货失败', e);
+    } catch (caughtError) {
+      console.error('发货失败', caughtError);
       alert('发货失败，请稍后重试');
     } finally {
       setShipLoading(false);
@@ -169,12 +225,12 @@ const OrderDetail: React.FC = () => {
       setConfirmLoading(true);
       const res = await orderApi.complete(order.id);
       if (res.success && res.data) {
-        setOrder(prev => prev ? ({ ...prev, status: res.data.status }) : null);
+        setOrder((prev) => (prev ? { ...prev, status: res.data.status } : null));
       } else {
         alert(res.message || '确认收货失败');
       }
-    } catch (e) {
-      console.error('确认收货失败', e);
+    } catch (caughtError) {
+      console.error('确认收货失败', caughtError);
       alert('确认收货失败，请稍后重试');
     } finally {
       setConfirmLoading(false);
@@ -187,89 +243,37 @@ const OrderDetail: React.FC = () => {
       setCancelLoading(true);
       const res = await orderApi.cancel(order.id);
       if (res.success) {
-        setOrder(prev => prev ? ({ ...prev, status: 'CANCELLED' as OrderStatus }) : null);
+        setOrder((prev) => (prev ? { ...prev, status: 'CANCELLED' as OrderStatus } : null));
         if (order.productId) {
           try {
             const chatRes = await chatApi.startChat(order.productId);
             if (chatRes.success && chatRes.data?.id) {
-              await chatApi.sendMessage(chatRes.data.id, { content: '我已取消订单', type: 'TEXT' as MessageType });
+              await chatApi.sendMessage(chatRes.data.id, {
+                content: '我已取消订单',
+                type: 'TEXT',
+              });
             }
-          } catch (chatErr) {
-            console.error('发送取消消息失败', chatErr);
+          } catch (chatError) {
+            console.error('发送取消消息失败', chatError);
           }
         }
         setShowCancelModal(false);
       } else {
         alert(res.message || '取消订单失败');
       }
-    } catch (e) {
-      console.error('取消订单失败', e);
+    } catch (caughtError) {
+      console.error('取消订单失败', caughtError);
       alert('取消订单失败，请稍后重试');
     } finally {
       setCancelLoading(false);
     }
   };
 
-  const getStatusConfig = (status: OrderStatus | string): StatusConfig => {
-    switch(status) {
-      case 'PENDING':
-        return { 
-          label: '进行中', 
-          desc: '等待双方交易，请保持沟通',
-          color: 'text-orange-600', 
-          bg: 'bg-orange-50', 
-          border: 'border-orange-100',
-          icon: Clock,
-          progress: 1
-        };
-      case 'SHIPPED':
-        return {
-          label: '交易中',
-          desc: '卖家已发货，请注意查收',
-          color: 'text-blue-600',
-          bg: 'bg-blue-50',
-          border: 'border-blue-100',
-          icon: Truck,
-          progress: 2,
-        };
-      case 'COMPLETED':
-        return { 
-          label: '已完成', 
-          desc: '交易顺利完成，期待下次合作',
-          color: 'text-emerald-600', 
-          bg: 'bg-emerald-50', 
-          border: 'border-emerald-100',
-          icon: CheckCircle,
-          progress: 3
-        };
-      case 'CANCELLED':
-        return { 
-          label: '已取消', 
-          desc: '订单已取消',
-          color: 'text-slate-500', 
-          bg: 'bg-slate-100', 
-          border: 'border-slate-200',
-          icon: Package,
-          progress: 0
-        };
-      default:
-        return { 
-          label: status, 
-          desc: '状态未知',
-          color: 'text-slate-600', 
-          bg: 'bg-slate-50', 
-          border: 'border-slate-200',
-          icon: Package,
-          progress: 0
-        };
-    }
-  };
-
   const currentUser = useMemo(() => {
     try {
       const userStr = localStorage.getItem('user');
-      return userStr ? JSON.parse(userStr) : null;
-    } catch (e) {
+      return userStr ? (JSON.parse(userStr) as { id?: number | string }) : null;
+    } catch {
       return null;
     }
   }, []);
@@ -294,7 +298,7 @@ const OrderDetail: React.FC = () => {
           </div>
           <h2 className="text-xl font-bold text-slate-900 mb-2">无法加载订单</h2>
           <p className="text-slate-500 mb-8">{error || '找不到该订单信息'}</p>
-          <button 
+          <button
             onClick={() => navigate(-1)}
             className="px-6 py-3 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors"
           >
@@ -307,41 +311,53 @@ const OrderDetail: React.FC = () => {
 
   const statusCfg = getStatusConfig(order.status);
   const StatusIcon = statusCfg.icon;
-  const statusAnimationConfig = getStatusAnimationConfig(order.status);
-  
+  const statusAnimationConfig = getStatusAnimationConfig(order.status as OrderStatus);
   const isBuyer = currentUser && String(currentUser.id) === String(order.buyerId);
-  
-  const partnerName = isBuyer ? (order.seller?.profile?.nickname || order.seller?.studentId || '卖家') : (order.buyer?.profile?.nickname || order.buyer?.studentId || '买家');
+
+  const partner = isBuyer ? order.seller : order.buyer;
+  const partnerName = getUserDisplayName(partner, isBuyer ? '卖家' : '买家');
   const partnerRole = isBuyer ? '卖家' : '买家';
   const partnerId = isBuyer ? order.sellerId : order.buyerId;
-  const rawAvatar = isBuyer ? order.seller?.avatar : order.buyer?.avatar;
-  const avatar = rawAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(partnerId || partnerName)}`;
+  const avatar =
+    getUserAvatarUrl(
+      partner,
+      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+        String(partnerId || partnerName)
+      )}`
+    ) || '';
 
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: { 
+    visible: {
       opacity: 1,
-      transition: { 
+      transition: {
         staggerChildren: 0.1,
-        delayChildren: 0.2
-      }
-    }
+        delayChildren: 0.2,
+      },
+    },
   };
 
   const itemVariants = {
     hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: { type: 'spring', stiffness: 300, damping: 24 },
+    },
   };
 
-  const productImage = order.product?.images?.[0]?.url || 'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800';
+  const productImage =
+    order.product?.images?.[0]?.url ||
+    order.productImage ||
+    'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800';
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-24">
       <Navbar />
-      
+
       <div className="absolute top-0 left-0 right-0 h-[400px] bg-gradient-to-b from-blue-50 via-indigo-50/50 to-transparent pointer-events-none" />
 
-      <motion.div 
+      <motion.div
         className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-28"
         variants={containerVariants}
         initial="hidden"
@@ -360,8 +376,7 @@ const OrderDetail: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
-            
-            <motion.div 
+            <motion.div
               variants={itemVariants}
               className={`relative overflow-hidden rounded-3xl p-8 ${statusCfg.bg} border ${statusCfg.border} shadow-sm`}
             >
@@ -373,79 +388,72 @@ const OrderDetail: React.FC = () => {
                 <p className="text-slate-600 opacity-80 font-medium ml-11">{statusCfg.desc}</p>
                 {statusAnimationConfig && statusAnimationData && (
                   <div className={statusAnimationConfig.className}>
-                    <LazyLottie
-                      animationData={statusAnimationData}
-                      loop={true}
-                      style={statusAnimationConfig.style}
-                    />
+                    <LazyLottie animationData={statusAnimationData} loop={true} style={statusAnimationConfig.style} />
                   </div>
                 )}
-                
+
                 <div className="mt-8 ml-2 flex items-center gap-2 relative">
                   {[1, 2, 3].map((step) => {
                     const active = statusCfg.progress >= step;
                     return (
                       <React.Fragment key={step}>
                         <div className="flex flex-col items-center gap-2 relative z-10">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors duration-500 ${
-                            active ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-white text-slate-400 border border-slate-200'
-                          }`}>
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors duration-500 ${
+                              active
+                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+                                : 'bg-white text-slate-400 border border-slate-200'
+                            }`}
+                          >
                             {step}
                           </div>
                         </div>
                         {step < 3 && (
-                          <div className={`h-1 flex-1 rounded-full mx-2 transition-colors duration-500 ${
-                            statusCfg.progress > step ? 'bg-blue-600' : 'bg-slate-200'
-                          }`} />
+                          <div
+                            className={`h-1 flex-1 rounded-full mx-2 transition-colors duration-500 ${
+                              statusCfg.progress > step ? 'bg-blue-600' : 'bg-slate-200'
+                            }`}
+                          />
                         )}
                       </React.Fragment>
                     );
                   })}
                 </div>
                 <div className="flex justify-between text-xs font-medium text-slate-500 mt-2 px-1">
-                  <span>已拍下</span>
+                  <span>已下单</span>
                   <span className="text-center">交易中</span>
                   <span className="text-right">已完成</span>
                 </div>
               </div>
-              
+
               <div className="absolute top-0 right-0 -mt-4 -mr-4 w-48 h-48 bg-white opacity-40 blur-3xl rounded-full pointer-events-none" />
               <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-32 h-32 bg-current opacity-5 blur-2xl rounded-full pointer-events-none" />
             </motion.div>
 
-            <motion.div 
-              variants={itemVariants}
-              className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
-            >
+            <motion.div variants={itemVariants} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
               <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                 <div className="flex items-center gap-2 text-slate-900 font-bold">
                   <Package size={20} className="text-blue-500" />
                   <h2>订单详情</h2>
                 </div>
               </div>
-              
+
               <div className="p-6">
                 <div className="flex gap-6 mb-8 pb-8 border-b border-slate-50 border-dashed">
                   <div className="w-28 h-28 rounded-2xl bg-slate-100 overflow-hidden border border-slate-100 shadow-inner flex-shrink-0">
-                    <img 
-                      src={productImage} 
-                      alt={order.product?.title || '商品'} 
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={productImage} alt={order.product?.title || '商品'} className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 flex flex-col">
                     <div className="flex-1">
                       <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2 leading-relaxed">
-                        {order.product?.title || '商品'}
+                        {order.product?.title || order.productTitle || '商品'}
                       </h3>
                       <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 text-slate-600 text-xs font-medium border border-slate-100">
-                        <span>二手</span>
+                        <span>二手交易</span>
                       </div>
                     </div>
                     <div className="flex items-end justify-between">
-                      <div className="text-2xl font-bold text-blue-600 tracking-tight">
-                        <span className="text-base align-top mr-0.5 font-normal text-slate-500">¥</span>{order.totalAmount}
-                      </div>
+                      <div className="text-2xl font-bold text-blue-600 tracking-tight">¥{order.priceSnapshot}</div>
                       <span className="text-slate-400 text-sm font-medium">x1</span>
                     </div>
                   </div>
@@ -454,40 +462,33 @@ const OrderDetail: React.FC = () => {
                 <div className="grid grid-cols-1 gap-y-4">
                   <InfoRow label="订单编号" value={String(order.id)} copyable />
                   <InfoRow label="创建时间" value={new Date(order.createdAt).toLocaleString('zh-CN')} />
-                  <InfoRow label="交易方式" value="线下面交" />
-                  <InfoRow label="支付方式" value="在线支付" />
+                  <InfoRow label="交易方式" value={order.meetLocation || '线下交易'} />
+                  <InfoRow label="订单状态" value={statusCfg.label} />
                 </div>
               </div>
             </motion.div>
           </div>
 
           <div className="lg:col-span-1 flex flex-col space-y-6">
-            <motion.div 
-              variants={itemVariants}
-              className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6"
-            >
+            <motion.div variants={itemVariants} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
               <div className="text-center">
-                <div 
+                <div
                   className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full p-1 mb-4 relative group cursor-pointer"
                   onClick={() => navigate(`/user/${partnerId}`)}
                 >
-                  <img 
-                    src={avatar} 
-                    alt="Avatar" 
-                    className="w-full h-full rounded-full object-cover border-2 border-white shadow-sm"
-                  />
+                  <img src={avatar} alt="Avatar" className="w-full h-full rounded-full object-cover border-2 border-white shadow-sm" />
                   <div className="absolute bottom-0 right-0 w-6 h-6 bg-green-500 border-4 border-white rounded-full" />
                 </div>
-                <h3 
+                <h3
                   className="text-lg font-bold text-slate-900 mb-1 cursor-pointer hover:text-blue-600 transition-colors"
                   onClick={() => navigate(`/user/${partnerId}`)}
                 >
                   {partnerName}
                 </h3>
                 <p className="text-sm text-slate-500 mb-6">{partnerRole}</p>
-                
+
                 <div className="grid grid-cols-2 gap-3">
-                  <button 
+                  <button
                     onClick={handleContact}
                     className="col-span-2 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95"
                   >
@@ -498,7 +499,7 @@ const OrderDetail: React.FC = () => {
               </div>
             </motion.div>
 
-            <motion.div 
+            <motion.div
               variants={itemVariants}
               className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 sticky top-24 flex-1 flex flex-col"
             >
@@ -508,7 +509,7 @@ const OrderDetail: React.FC = () => {
               </h3>
               <div className="space-y-3">
                 {isBuyer && order.status === 'SHIPPED' && (
-                  <button 
+                  <button
                     onClick={handleConfirmReceipt}
                     disabled={confirmLoading}
                     className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
@@ -551,18 +552,18 @@ const OrderDetail: React.FC = () => {
                     取消订单
                   </button>
                 )}
-                
+
                 <button className="w-full py-3.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl font-medium transition-colors flex items-center justify-center gap-2">
                   <AlertCircle size={18} />
-                  举报/投诉
+                  举报 / 投诉
                 </button>
               </div>
-              
+
               <div className="mt-8 pt-6 border-t border-slate-50 flex-1 flex items-center justify-center">
                 <p className="text-xs text-slate-400 leading-relaxed text-center">
-                  如遇交易纠纷，请及时联系客服介入处理。
+                  如遇交易纠纷，请及时联系平台介入处理。
                   <br />
-                  为了您的资金安全，请勿脱离平台交易。
+                  为了你的资金安全，请勿脱离平台沟通渠道。
                 </p>
               </div>
             </motion.div>
@@ -590,7 +591,7 @@ const OrderDetail: React.FC = () => {
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">确定要取消订单吗？</h3>
                 <p className="text-slate-500 text-sm leading-relaxed">
-                  取消后订单将无法恢复，如果卖家已发货，请先与卖家沟通协商。
+                  取消后订单将无法恢复，如果卖家已经发货，请先与卖家沟通协商。
                 </p>
               </div>
               <div className="p-6 pt-0 flex gap-3">
@@ -605,9 +606,7 @@ const OrderDetail: React.FC = () => {
                   disabled={cancelLoading}
                   className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-red-500/20"
                 >
-                  {cancelLoading && (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  )}
+                  {cancelLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                   确认取消
                 </button>
               </div>
@@ -631,7 +630,7 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, copyable }) => (
     <div className="flex items-center gap-2 text-slate-900 font-medium">
       <span className="font-mono">{value}</span>
       {copyable && (
-        <button 
+        <button
           onClick={() => navigator.clipboard.writeText(value)}
           className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
           title="复制"
@@ -644,3 +643,5 @@ const InfoRow: React.FC<InfoRowProps> = ({ label, value, copyable }) => (
 );
 
 export default OrderDetail;
+
+

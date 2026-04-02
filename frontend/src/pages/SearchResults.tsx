@@ -1,4 +1,4 @@
-import { useEffect, useState, FC } from 'react';
+﻿import { useEffect, useState, FC } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, PackageX, ArrowLeft, Sparkles } from 'lucide-react';
@@ -6,7 +6,7 @@ import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
 import ProductCard from '../components/ProductCard';
 import { productApi } from '../api';
-import type { ProductListItem } from '../../../backend/src/types/shared';
+import type { ProductListItem } from '@campus-market/shared';
 
 interface CardProduct {
   id: number;
@@ -22,36 +22,44 @@ interface CardProduct {
   };
 }
 
-const mapToCardProduct = (p: ProductListItem): CardProduct => {
-  const createdAt = p.createdAt ? new Date(p.createdAt) : null;
+const formatRelativeTime = (date: Date | null): string => {
+  if (!date || Number.isNaN(date.getTime())) return '';
 
-  const formatTime = (date: Date | null): string => {
-    if (!date || isNaN(date.getTime())) return '';
-    const diffMs = Date.now() - date.getTime();
-    const diffMinutes = Math.floor(diffMs / 60000);
-    if (diffMinutes < 60) return `${diffMinutes || 1}分钟前`;
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours}小时前`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays}天前`;
-    return date.toLocaleDateString('zh-CN');
-  };
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 60) return `${diffMinutes || 1}分钟前`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}小时前`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}天前`;
+
+  return date.toLocaleDateString('zh-CN');
+};
+
+const mapToCardProduct = (product: ProductListItem): CardProduct => {
+  const createdAt = product.createdAt ? new Date(product.createdAt) : null;
 
   return {
-    id: p.id,
-    title: p.title,
-    price: p.price,
-    description: '',
+    id: product.id,
+    title: product.title,
+    price: product.price,
+    description: product.description || '',
     image:
-      (p as any).thumbnail ||
+      product.images?.[0]?.url ||
       'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800',
-    location: p.location || '校内',
-    timeAgo: formatTime(createdAt),
+    location: product.location || '校内',
+    timeAgo: formatRelativeTime(createdAt),
     seller: {
-      name: (p as any).sellerName || '同学',
+      name:
+        product.seller?.profile?.name ||
+        product.seller?.profile?.nickname ||
+        product.seller?.studentId ||
+        '同学',
       avatar:
-        (p as any).sellerAvatar ||
-        `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.sellerId || p.id}`,
+        product.seller?.avatar ||
+        `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,
     },
   };
 };
@@ -110,27 +118,26 @@ const SearchResults: FC = () => {
 
         if (res.success) {
           const list = res.data?.content || [];
-          setProducts(list.filter((p) => p.status === 'ON_SALE'));
+          setProducts(list.filter((product) => product.status === 'ON_SALE'));
         } else {
           setError(res.message || '搜索出错了');
         }
-      } catch (e) {
+      } catch {
         setError('网络似乎开了小差，请稍后重试');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchResults();
+    void fetchResults();
   }, [query]);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans text-slate-900">
       <Navbar />
 
-      {/* 登录弹窗 */}
-      <AuthModal 
-        isOpen={showAuthModal} 
+      <AuthModal
+        isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onLoginSuccess={handleLoginSuccess}
       />
@@ -151,11 +158,9 @@ const SearchResults: FC = () => {
 
           <div className="flex items-baseline gap-3">
             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600">
-              "{query}" 的搜索结果
+              “{query}” 的搜索结果
             </h1>
-            <span className="text-slate-400 font-medium">
-              {!loading && `共找到 ${products.length} 件宝贝`}
-            </span>
+            <span className="text-slate-400 font-medium">{!loading && `共找到 ${products.length} 件宝贝`}</span>
           </div>
         </motion.div>
 
@@ -168,9 +173,9 @@ const SearchResults: FC = () => {
               exit={{ opacity: 0 }}
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
             >
-              {[...Array(8)].map((_, i) => (
+              {[...Array(8)].map((_, index) => (
                 <div
-                  key={i}
+                  key={index}
                   className="bg-white rounded-2xl aspect-[3/4] animate-pulse shadow-sm border border-slate-100"
                 />
               ))}
@@ -186,10 +191,7 @@ const SearchResults: FC = () => {
                 <PackageX size={32} />
               </div>
               <p className="text-slate-600 mb-2">{error}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="text-blue-600 hover:underline"
-              >
+              <button onClick={() => window.location.reload()} className="text-blue-600 hover:underline">
                 刷新试试
               </button>
             </motion.div>
@@ -205,7 +207,7 @@ const SearchResults: FC = () => {
               </div>
               <h3 className="text-xl font-bold text-slate-900 mb-2">没有找到相关商品</h3>
               <p className="text-slate-500 max-w-md mx-auto mb-8">
-                换个关键词试试？或者看看现在的热门推荐吧
+                换个关键词试试？或者看看现在的热门推荐。
               </p>
               <Link to="/market">
                 <button className="px-8 py-3 bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-all hover:shadow-lg flex items-center gap-2">
@@ -222,9 +224,9 @@ const SearchResults: FC = () => {
               animate="show"
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
             >
-              {products.map((p) => (
-                <motion.div key={p.id} variants={itemVariants} layout>
-                  <ProductCard product={mapToCardProduct(p)} onNeedLogin={handleNeedLogin} />
+              {products.map((product) => (
+                <motion.div key={product.id} variants={itemVariants} layout>
+                  <ProductCard product={mapToCardProduct(product)} onNeedLogin={handleNeedLogin} />
                 </motion.div>
               ))}
             </motion.div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, FC } from 'react';
+﻿import { useState, useEffect, FC } from 'react';
 import Navbar from '../components/Navbar';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -13,9 +13,9 @@ import {
   LucideIcon,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import type { OrderStatus, OrderWithDetails } from '@campus-market/shared';
 import { orderApi, chatApi } from '../api';
-import type { OrderWithDetails, MessageType } from '../../../backend/src/types/shared';
-import { getUserDisplayName } from '../lib/user-display';
+import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
 
 interface StatusConfig {
   label: string;
@@ -25,17 +25,17 @@ interface StatusConfig {
 }
 
 const getOrderAmount = (order: OrderWithDetails): number => {
-  return order.totalAmount ?? order.product?.price ?? 0;
+  return order.priceSnapshot ?? order.productPrice ?? order.product?.price ?? 0;
 };
 
 const getProductTitle = (order: OrderWithDetails): string => {
-  return order.product?.title || '商品';
+  return order.product?.title || order.productTitle || '商品';
 };
 
 const getProductImage = (order: OrderWithDetails): string => {
   return (
     order.product?.images?.[0]?.url ||
-    (order.product as any)?.imageUrl ||
+    order.productImage ||
     'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800'
   );
 };
@@ -45,13 +45,27 @@ const getCounterparty = (order: OrderWithDetails, isBuy: boolean) => {
   const otherName = getUserDisplayName(otherUser, '同学');
   const seed = otherUser?.id || otherUser?.studentId || otherName;
   const avatar =
-    (otherUser as any)?.avatarUrl ||
-    (otherUser as any)?.avatar ||
-    (otherUser as any)?.profile?.avatarUrl ||
-    (otherUser as any)?.profile?.avatar ||
-    `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(seed))}`;
+    getUserAvatarUrl(
+      otherUser,
+      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(seed))}`
+    ) || '';
 
   return { otherName, avatar };
+};
+
+const getStatusConfig = (status: OrderStatus | string): StatusConfig => {
+  switch (status) {
+    case 'PENDING':
+      return { label: '待交易', color: 'text-yellow-600', bg: 'bg-yellow-50', icon: Clock };
+    case 'SHIPPED':
+      return { label: '进行中', color: 'text-blue-600', bg: 'bg-blue-50', icon: Truck };
+    case 'COMPLETED':
+      return { label: '已完成', color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle };
+    case 'CANCELLED':
+      return { label: '已取消', color: 'text-slate-500', bg: 'bg-slate-100', icon: Package };
+    default:
+      return { label: status, color: 'text-slate-600', bg: 'bg-slate-50', icon: Package };
+  }
 };
 
 const MyOrders: FC = () => {
@@ -73,9 +87,8 @@ const MyOrders: FC = () => {
       try {
         setLoading(true);
         setError('');
-        const role = activeTab;
         const status = selectedStatus === 'ALL' ? undefined : selectedStatus;
-        const res = await orderApi.getMyOrders(role, status);
+        const res = await orderApi.getMyOrders(activeTab, status);
         if (res.success) {
           setOrders(res.data || []);
         } else {
@@ -90,24 +103,6 @@ const MyOrders: FC = () => {
 
     loadOrders();
   }, [activeTab, selectedStatus]);
-
-  const filteredOrders = orders;
-
-  const getStatusConfig = (status: string): StatusConfig => {
-    switch (status) {
-      case 'PENDING':
-        return { label: '待发货', color: 'text-yellow-600', bg: 'bg-yellow-50', icon: Clock };
-      case 'SHIPPED':
-        return { label: '进行中', color: 'text-blue-600', bg: 'bg-blue-50', icon: Truck };
-      case 'DONE':
-      case 'COMPLETED':
-        return { label: '已收货', color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle };
-      case 'CANCELLED':
-        return { label: '已取消', color: 'text-slate-500', bg: 'bg-slate-100', icon: Package };
-      default:
-        return { label: status, color: 'text-slate-600', bg: 'bg-slate-50', icon: Package };
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -138,7 +133,10 @@ const MyOrders: FC = () => {
             >
               {tab === 'BUY' ? '我买到的' : '我卖出的'}
               {activeTab === tab && (
-                <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                <motion.div
+                  layoutId="activeTab"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+                />
               )}
             </button>
           ))}
@@ -156,7 +154,7 @@ const MyOrders: FC = () => {
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                {status === 'ALL' ? '全部订单' : status === 'PENDING' ? '待发货' : '已收货'}
+                {status === 'ALL' ? '全部订单' : status === 'PENDING' ? '待交易' : '已完成'}
               </button>
             ))}
           </div>
@@ -166,8 +164,8 @@ const MyOrders: FC = () => {
               <div className="text-center py-20 text-slate-400 text-sm">加载中...</div>
             ) : error ? (
               <div className="text-center py-20 text-red-500 text-sm">{error}</div>
-            ) : filteredOrders.length > 0 ? (
-              filteredOrders.map((order, index) => {
+            ) : orders.length > 0 ? (
+              orders.map((order, index) => {
                 const statusCfg = getStatusConfig(order.status);
                 const StatusIcon = statusCfg.icon;
                 const isBuy = activeTab === 'BUY';
@@ -305,13 +303,15 @@ const MyOrders: FC = () => {
                 <div className="text-left">
                   <h3 className="text-base font-bold text-slate-900">确认已收货？</h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    确认后订单状态将变为「已收货」，无法再次修改。
+                    确认后订单状态将变为“已完成”，无法再次修改。
                   </p>
                 </div>
               </div>
 
               <div className="bg-slate-50 rounded-2xl px-4 py-3 text-left text-sm text-slate-600 mb-4">
-                <div className="line-clamp-1 font-medium text-slate-900 mb-1">{getProductTitle(confirmingOrder)}</div>
+                <div className="line-clamp-1 font-medium text-slate-900 mb-1">
+                  {getProductTitle(confirmingOrder)}
+                </div>
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>
                     金额：<span className="font-semibold text-slate-900">¥{getOrderAmount(confirmingOrder)}</span>
@@ -339,9 +339,12 @@ const MyOrders: FC = () => {
                       setConfirmError('');
                       const res = await orderApi.complete(confirmingOrder.id);
                       if (res.success && res.data) {
-                        const updatedStatus = res.data.status;
                         setOrders((prev) =>
-                          prev.map((o) => (o.id === confirmingOrder.id ? { ...o, status: updatedStatus } : o))
+                          prev.map((currentOrder) =>
+                            currentOrder.id === confirmingOrder.id
+                              ? { ...currentOrder, status: res.data.status }
+                              : currentOrder
+                          )
                         );
                         setConfirmingOrder(null);
                       } else {
@@ -382,7 +385,7 @@ const MyOrders: FC = () => {
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">确定要取消订单吗？</h3>
                 <p className="text-slate-500 text-sm leading-relaxed">
-                  取消后订单将无法恢复，如果卖家已发货，请先与卖家沟通协商。
+                  取消后订单将无法恢复，如果卖家已经发货，请先与卖家沟通协商。
                 </p>
               </div>
               <div className="p-6 pt-0 flex gap-3">
@@ -402,9 +405,13 @@ const MyOrders: FC = () => {
                     try {
                       setCancelLoading(cancelTarget.id);
                       const res = await orderApi.cancel(cancelTarget.id);
-                      if (res.success) {
+                      if (res.success && res.data) {
                         setOrders((prev) =>
-                          prev.map((o) => (o.id === cancelTarget.id ? { ...o, status: res.data.status } : o))
+                          prev.map((currentOrder) =>
+                            currentOrder.id === cancelTarget.id
+                              ? { ...currentOrder, status: res.data.status }
+                              : currentOrder
+                          )
                         );
                         if (cancelTarget.productId) {
                           try {
@@ -412,11 +419,11 @@ const MyOrders: FC = () => {
                             if (chatRes.success && chatRes.data?.id) {
                               await chatApi.sendMessage(chatRes.data.id, {
                                 content: '我已取消订单',
-                                type: 'TEXT' as MessageType,
+                                type: 'TEXT',
                               });
                             }
                           } catch {
-                            // ignore chat notification failures
+                            // Ignore chat notification failures.
                           }
                         }
                         setShowCancelModal(false);
@@ -430,10 +437,12 @@ const MyOrders: FC = () => {
                       setCancelLoading(null);
                     }
                   }}
-                  disabled={!!cancelLoading}
+                  disabled={cancelLoading !== null}
                   className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-red-500/20"
                 >
-                  {cancelLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  {cancelLoading && (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  )}
                   确认取消
                 </button>
               </div>
@@ -446,3 +455,5 @@ const MyOrders: FC = () => {
 };
 
 export default MyOrders;
+
+

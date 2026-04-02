@@ -1,54 +1,46 @@
-import request from './axios';
+﻿import request from './axios';
 import type {
-  // 用户相关类型
-  User,
-  UserProfile,
-  LoginRequest,
-  RegisterRequest,
+  ApiResponse,
   AuthResponse,
-  UpdateProfileRequest,
-  ResetPasswordRequest,
-  // 商品相关类型
-  Product,
-  ProductWithDetails,
-  ProductListItem,
-  CreateProductRequest,
-  UpdateProductRequest,
   Category,
-  // 订单相关类型
+  ChatMessageWithSender,
+  ChatSessionWithDetails,
+  CreateOrderRequest,
+  CreateProductRequest,
+  FavoriteWithProduct,
+  LoginRequest,
   Order,
   OrderWithDetails,
-  CreateOrderRequest,
-  // 聊天相关类型
-  ChatSessionWithDetails,
-  ChatMessageWithSender,
-  SendMessageRequest,
-  // 收藏类型
-  FavoriteWithProduct,
-  // API 响应类型
-  ApiResponse,
   PageResponse,
+  Product,
+  ProductListItem,
+  ProductWithDetails,
+  RegisterRequest,
+  ResetPasswordRequest,
+  SendMessageRequest,
+  UpdateProductRequest,
+  UpdateProfileRequest,
   UploadResponse,
-} from '../../../backend/src/types/shared';
+  User,
+} from '@campus-market/shared';
 
 export const authApi = {
-  login: (data: LoginRequest): Promise<ApiResponse<AuthResponse>> => 
+  login: (data: LoginRequest): Promise<ApiResponse<AuthResponse>> =>
     request.post('/auth/login', data),
-  
-  register: (data: RegisterRequest): Promise<ApiResponse<AuthResponse>> => 
+
+  register: (data: RegisterRequest): Promise<ApiResponse<AuthResponse>> =>
     request.post('/auth/register', data),
-  
-  me: (): Promise<ApiResponse<User & { profile?: UserProfile }>> => 
-    request.get('/auth/me'),
-  
-  resetPassword: (data: ResetPasswordRequest): Promise<ApiResponse<void>> => 
+
+  me: (): Promise<ApiResponse<User>> => request.get('/auth/me'),
+
+  resetPassword: (data: ResetPasswordRequest): Promise<ApiResponse<void>> =>
     request.post('/auth/reset-password', data),
 };
 
 export const productApi = {
-  getLatest: (): Promise<ApiResponse<ProductListItem[]>> => 
+  getLatest: (): Promise<ApiResponse<ProductListItem[]>> =>
     request.get('/products/latest'),
-  
+
   getList: (params: {
     categoryId?: number;
     keyword?: string;
@@ -57,42 +49,42 @@ export const productApi = {
     sort?: string;
     page?: number;
     size?: number;
-  }): Promise<ApiResponse<PageResponse<ProductListItem>>> => 
+  }): Promise<ApiResponse<PageResponse<ProductListItem>>> =>
     request.get('/products', { params }),
-  
-  getDetail: (id: number): Promise<ApiResponse<ProductWithDetails>> => 
+
+  getDetail: (id: number): Promise<ApiResponse<ProductWithDetails>> =>
     request.get(`/products/${id}`),
-  
-  increaseView: (id: number): Promise<ApiResponse<void>> => 
+
+  increaseView: (id: number): Promise<ApiResponse<void>> =>
     request.post(`/products/${id}/view`),
-  
-  create: (data: CreateProductRequest): Promise<ApiResponse<ProductWithDetails>> => 
+
+  create: (data: CreateProductRequest): Promise<ApiResponse<ProductWithDetails>> =>
     request.post('/products', data),
-  
-  update: (id: number, data: UpdateProductRequest): Promise<ApiResponse<ProductWithDetails>> => 
+
+  update: (id: number, data: UpdateProductRequest): Promise<ApiResponse<ProductWithDetails>> =>
     request.put(`/products/${id}`, data),
-  
-  delete: (id: number): Promise<ApiResponse<void>> => 
+
+  delete: (id: number): Promise<ApiResponse<void>> =>
     request.delete(`/products/${id}`),
-  
-  getCategories: (): Promise<ApiResponse<Category[]>> => 
+
+  getCategories: (): Promise<ApiResponse<Category[]>> =>
     request.get('/categories'),
-  
-  updateStatus: (id: number, status: string): Promise<ApiResponse<Product>> => 
+
+  updateStatus: (id: number, status: string): Promise<ApiResponse<Product>> =>
     request.patch(`/products/${id}/status`, { status }),
 };
 
 export const userApi = {
-  getProfile: (id: number): Promise<ApiResponse<User & { profile?: UserProfile }>> => 
+  getProfile: (id: number): Promise<ApiResponse<User>> =>
     request.get(`/users/${id}`),
-  
-  getMyProducts: (status?: string): Promise<ApiResponse<ProductListItem[]>> => 
+
+  getMyProducts: (status?: string): Promise<ApiResponse<ProductListItem[]>> =>
     request.get('/users/me/products', { params: { status } }),
-  
-  getUserProducts: (id: number, status?: string): Promise<ApiResponse<ProductListItem[]>> => 
+
+  getUserProducts: (id: number, status?: string): Promise<ApiResponse<ProductListItem[]>> =>
     request.get(`/users/${id}/products`, { params: { status } }),
-  
-  updateProfile: (data: UpdateProfileRequest): Promise<ApiResponse<User & { profile?: UserProfile }>> => {
+
+  updateProfile: (data: UpdateProfileRequest): Promise<ApiResponse<User>> => {
     const normalizedData: UpdateProfileRequest = {
       ...data,
     };
@@ -118,67 +110,60 @@ export const userApi = {
 };
 
 export const orderApi = {
-  create: (data: CreateOrderRequest): Promise<ApiResponse<OrderWithDetails>> => 
+  create: (data: CreateOrderRequest): Promise<ApiResponse<OrderWithDetails>> =>
     request.post('/orders', data),
-  
-  getDetail: (id: number): Promise<ApiResponse<OrderWithDetails>> => 
+
+  getDetail: (id: number): Promise<ApiResponse<OrderWithDetails>> =>
     request.get(`/orders/${id}`),
-  
-  getMyOrders: (role?: string, status?: string): Promise<ApiResponse<OrderWithDetails[]>> => 
+
+  getMyOrders: (role?: string, status?: string): Promise<ApiResponse<OrderWithDetails[]>> =>
     request.get('/orders/me', { params: { role, status } }),
-  
-  confirm: (id: number): Promise<ApiResponse<Order>> => 
+
+  confirm: (id: number): Promise<ApiResponse<Order>> =>
     request.post(`/orders/${id}/confirm`),
-  
-  ship: (id: number): Promise<ApiResponse<Order>> => 
+
+  ship: (id: number): Promise<ApiResponse<Order>> =>
     request.post(`/orders/${id}/ship`),
-  
-  complete: (id: number): Promise<ApiResponse<Order>> => 
+
+  complete: (id: number): Promise<ApiResponse<Order>> =>
     request.post(`/orders/${id}/complete`),
-  
-  cancel: (id: number): Promise<ApiResponse<Order>> => 
+
+  cancel: (id: number): Promise<ApiResponse<Order>> =>
     request.post(`/orders/${id}/cancel`),
 };
 
 export const chatApi = {
-  // 获取聊天会话列表
-  getList: (): Promise<ApiResponse<ChatSessionWithDetails[]>> => 
+  getList: (): Promise<ApiResponse<ChatSessionWithDetails[]>> =>
     request.get('/chat/sessions'),
-  
-  // 获取聊天消息列表
-  getMessages: (sessionId: number): Promise<ApiResponse<ChatMessageWithSender[]>> => 
+
+  getMessages: (sessionId: number): Promise<ApiResponse<ChatMessageWithSender[]>> =>
     request.get(`/chat/sessions/${sessionId}/messages`),
-  
-  // 发送消息
-  sendMessage: (sessionId: number, data: Omit<SendMessageRequest, 'sessionId'>): Promise<ApiResponse<ChatMessageWithSender>> => 
+
+  sendMessage: (
+    sessionId: number,
+    data: Omit<SendMessageRequest, 'sessionId'>
+  ): Promise<ApiResponse<ChatMessageWithSender>> =>
     request.post('/chat/messages', { ...data, sessionId }),
-  
-  // 发起聊天
-  startChat: (productId: number): Promise<ApiResponse<ChatSessionWithDetails>> => 
+
+  startChat: (productId: number): Promise<ApiResponse<ChatSessionWithDetails>> =>
     request.post('/chat/start', { productId }),
-  
-  // 标记会话已读
-  markAsRead: (sessionId: number): Promise<ApiResponse<void>> => 
+
+  markAsRead: (sessionId: number): Promise<ApiResponse<void>> =>
     request.post(`/chat/sessions/${sessionId}/read`),
-  
-  // 撤回消息
-  recallMessage: (messageId: number): Promise<ApiResponse<void>> => 
+
+  recallMessage: (messageId: number): Promise<ApiResponse<void>> =>
     request.post(`/chat/messages/${messageId}/recall`),
 };
 
 export const fileApi = {
-  /**
-   * 上传图片
-   * @param file 文件
-   * @param type 类型: avatar(头像), product(商品图片), chat(聊天图片)
-   */
-  uploadImage: (file: File, type: 'avatar' | 'product' | 'chat' = 'product'): Promise<ApiResponse<UploadResponse>> => {
+  uploadImage: (
+    file: File,
+    type: 'avatar' | 'product' | 'chat' = 'product'
+  ): Promise<ApiResponse<UploadResponse>> => {
     const formData = new FormData();
-    // 根据不同类型使用不同的字段名
     const fieldName = type === 'avatar' ? 'avatar' : 'image';
     formData.append(fieldName, file);
-    
-    // 根据类型调用不同的上传接口
+
     return request.post(`/upload/${type}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -188,19 +173,17 @@ export const fileApi = {
 };
 
 export const favoriteApi = {
-  listMy: (): Promise<ApiResponse<FavoriteWithProduct[]>> => 
+  listMy: (): Promise<ApiResponse<FavoriteWithProduct[]>> =>
     request.get('/favorites'),
-  
-  add: (productId: number): Promise<ApiResponse<FavoriteWithProduct>> => 
+
+  add: (productId: number): Promise<ApiResponse<FavoriteWithProduct>> =>
     request.post(`/favorites/${productId}`),
-  
-  remove: (productId: number): Promise<ApiResponse<void>> => 
+
+  remove: (productId: number): Promise<ApiResponse<void>> =>
     request.delete(`/favorites/${productId}`),
 };
 
-// 管理员 API
 export const adminApi = {
-  // 获取统计数据
   getStatistics: (): Promise<ApiResponse<{
     totalUsers: number;
     totalProducts: number;
@@ -222,10 +205,9 @@ export const adminApi = {
       users: number;
       newUsers: number;
     }>;
-  }>> => 
+  }>> =>
     request.get('/admin/statistics'),
-  
-  // 用户管理
+
   getAllUsers: (params: {
     page?: number;
     pageSize?: number;
@@ -244,17 +226,16 @@ export const adminApi = {
     page: number;
     pageSize: number;
     totalPages: number;
-  }>> => 
+  }>> =>
     request.get('/admin/users', { params }),
-  
+
   toggleUserStatus: (userId: number): Promise<ApiResponse<{
     id: number;
     studentId: string;
     enabled: boolean;
-  }>> => 
+  }>> =>
     request.put(`/admin/users/${userId}/toggle-status`),
-  
-  // 商品管理
+
   getAllProducts: (params: {
     page?: number;
     pageSize?: number;
@@ -275,13 +256,12 @@ export const adminApi = {
     page: number;
     pageSize: number;
     totalPages: number;
-  }>> => 
+  }>> =>
     request.get('/admin/products', { params }),
-  
-  deleteProduct: (productId: number): Promise<ApiResponse<void>> => 
+
+  deleteProduct: (productId: number): Promise<ApiResponse<void>> =>
     request.delete(`/admin/products/${productId}`),
-  
-  // 订单管理
+
   getAllOrders: (params: {
     page?: number;
     pageSize?: number;
@@ -304,23 +284,22 @@ export const adminApi = {
     page: number;
     pageSize: number;
     totalPages: number;
-  }>> => 
+  }>> =>
     request.get('/admin/orders', { params }),
-  
-  // 分类管理
+
   getAllCategories: (): Promise<ApiResponse<Array<{
     id: number;
     name: string;
     productCount: number;
-  }>>> => 
+  }>>> =>
     request.get('/admin/categories'),
-  
+
   createCategory: (name: string): Promise<ApiResponse<{
     id: number;
     name: string;
-  }>> => 
+  }>> =>
     request.post('/admin/categories', { name }),
-  
-  deleteCategory: (categoryId: number): Promise<ApiResponse<void>> => 
+
+  deleteCategory: (categoryId: number): Promise<ApiResponse<void>> =>
     request.delete(`/admin/categories/${categoryId}`),
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
 import Hero from '../components/Hero';
@@ -7,7 +7,7 @@ import { Zap, Shield, RefreshCw, Clock4 } from 'lucide-react';
 import { Logout } from '@icon-park/react';
 import { Link } from 'react-router-dom';
 import { productApi } from '../api';
-import type { ProductListItem } from '../../../backend/src/types/shared';
+import type { ProductListItem } from '@campus-market/shared';
 import type { LucideIcon } from 'lucide-react';
 
 interface Feature {
@@ -19,19 +19,19 @@ interface Feature {
 const FEATURES: Feature[] = [
   {
     icon: Zap,
-    title: "极速发布",
-    desc: "30秒快速发布闲置，智能识别分类"
+    title: '极速发布',
+    desc: '30 秒快速发布闲置，智能识别分类。',
   },
   {
     icon: Shield,
-    title: "实名认证",
-    desc: "接入校园统一认证，交易更安心"
+    title: '实名认证',
+    desc: '接入校园统一认证，交易更安心。',
   },
   {
     icon: RefreshCw,
-    title: "当面交易",
-    desc: "校内线下自提，省去快递烦恼"
-  }
+    title: '当面交易',
+    desc: '校内线下自提，省去快递烦恼。',
+  },
 ];
 
 interface CardProduct {
@@ -48,33 +48,45 @@ interface CardProduct {
   };
 }
 
-// 将后端的 ProductListItem 转成前端卡片需要的结构
-const mapToCardProduct = (p: ProductListItem): CardProduct => {
-  const createdAt = p.createdAt ? new Date(p.createdAt) : null;
+const mapToCardProduct = (product: ProductListItem): CardProduct => {
+  const createdAt = product.createdAt ? new Date(product.createdAt) : null;
 
   const formatTime = (date: Date | null): string => {
-    if (!date || isNaN(date.getTime())) return '';
+    if (!date || Number.isNaN(date.getTime())) return '';
+
     const diffMs = Date.now() - date.getTime();
     const diffMinutes = Math.floor(diffMs / 60000);
+
     if (diffMinutes < 60) return `${diffMinutes || 1}分钟前`;
+
     const diffHours = Math.floor(diffMinutes / 60);
     if (diffHours < 24) return `${diffHours}小时前`;
+
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays < 7) return `${diffDays}天前`;
+
     return date.toLocaleDateString('zh-CN');
   };
 
   return {
-    id: p.id,
-    title: p.title,
-    price: p.price,
-    description: '',
-    image: p.images?.[0]?.url || 'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800',
-    location: p.location || '校内',
+    id: product.id,
+    title: product.title,
+    price: product.price,
+    description: product.description || '',
+    image:
+      product.images?.[0]?.url ||
+      'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800',
+    location: product.location || '校内',
     timeAgo: formatTime(createdAt),
     seller: {
-      name: p.seller?.profile?.nickname || p.seller?.studentId || '同学',
-      avatar: p.seller?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.sellerId || p.id}`,
+      name:
+        product.seller?.profile?.name ||
+        product.seller?.profile?.nickname ||
+        product.seller?.studentId ||
+        '同学',
+      avatar:
+        product.seller?.avatar ||
+        `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,
     },
   };
 };
@@ -96,7 +108,7 @@ const Home: React.FC = () => {
         } else {
           setError(res.message || '加载最新商品失败');
         }
-      } catch (err) {
+      } catch {
         setError('加载最新商品失败，请稍后重试');
       } finally {
         setLoading(false);
@@ -112,7 +124,6 @@ const Home: React.FC = () => {
 
   const handleLoginSuccess = () => {
     setShowAuthModal(false);
-    // 登录成功后刷新页面
     window.location.reload();
   };
 
@@ -120,20 +131,21 @@ const Home: React.FC = () => {
     <div className="min-h-screen bg-slate-50">
       <Navbar />
       <Hero />
-      
-      {/* 登录弹窗 */}
-      <AuthModal 
-        isOpen={showAuthModal} 
+
+      <AuthModal
+        isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onLoginSuccess={handleLoginSuccess}
       />
-      
-      {/* Features Section */}
+
       <section className="py-16 bg-white relative border-y border-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-3 gap-8">
             {FEATURES.map((feature, index) => (
-              <div key={index} className="flex items-start gap-4 p-6 rounded-2xl bg-slate-50 hover:bg-blue-50 transition-colors group cursor-default">
+              <div
+                key={index}
+                className="flex items-start gap-4 p-6 rounded-2xl bg-slate-50 hover:bg-blue-50 transition-colors group cursor-default"
+              >
                 <div className="p-3 bg-white rounded-xl shadow-sm group-hover:scale-110 transition-transform duration-300 text-blue-600 ring-1 ring-slate-100">
                   <feature.icon size={24} />
                 </div>
@@ -147,7 +159,6 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Latest Products */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-end mb-12">
@@ -158,44 +169,52 @@ const Home: React.FC = () => {
               </div>
               <p className="text-slate-500">看看同学们刚刚发布了什么好东西</p>
             </div>
-            <Link 
-              to="/market" 
+            <Link
+              to="/market"
               className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-full shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-105 transition-all duration-300 group"
             >
-              查看全部 
-              <Logout theme="two-tone" size={16} fill={['#ffffff' ,'#2F88FF']} className="group-hover:translate-x-1 transition-transform" />
+              查看全部
+              <Logout
+                theme="two-tone"
+                size={16}
+                fill={['#ffffff', '#2F88FF']}
+                className="group-hover:translate-x-1 transition-transform"
+              />
             </Link>
           </div>
-          
-          {error && (
-            <div className="text-red-500 text-sm mb-4">{error}</div>
-          )}
+
+          {error && <div className="text-red-500 text-sm mb-4">{error}</div>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
             {loading ? (
               <div className="col-span-full text-center text-slate-400 text-sm">正在加载最新商品...</div>
             ) : latestProducts.length === 0 ? (
-              <div className="col-span-full text-center text-slate-400 text-sm">暂时还没有商品，去发布一个吧～</div>
+              <div className="col-span-full text-center text-slate-400 text-sm">
+                暂时还没有商品，去发布一个吧。
+              </div>
             ) : (
-              latestProducts.map((p) => (
-                <ProductCard key={p.id} product={mapToCardProduct(p)} onNeedLogin={handleNeedLogin} />
+              latestProducts.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={mapToCardProduct(product)}
+                  onNeedLogin={handleNeedLogin}
+                />
               ))
             )}
           </div>
-          
+
           <div className="mt-12 text-center sm:hidden">
-            <Link 
-              to="/market" 
+            <Link
+              to="/market"
               className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-full shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all"
             >
-              查看全部 
-              <Logout theme="two-tone" size={18} fill={['#ffffff' ,'#2F88FF']} />
+              查看全部
+              <Logout theme="two-tone" size={18} fill={['#ffffff', '#2F88FF']} />
             </Link>
           </div>
         </div>
       </section>
-      
-      {/* CTA Section */}
+
       <section className="py-24 relative overflow-hidden">
         <div className="absolute inset-0 bg-blue-600"></div>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(255,255,255,0.1),transparent)]"></div>
@@ -208,7 +227,7 @@ const Home: React.FC = () => {
             别让它们在角落里吃灰。只需几步，轻松变现，还能帮助有需要的同学。
           </p>
           <Link to="/publish">
-             <button className="px-10 py-5 bg-white text-blue-600 rounded-full font-bold hover:bg-blue-50 transition-all shadow-xl hover:shadow-2xl hover:scale-105">
+            <button className="px-10 py-5 bg-white text-blue-600 rounded-full font-bold hover:bg-blue-50 transition-all shadow-xl hover:shadow-2xl hover:scale-105">
               立即发布闲置
             </button>
           </Link>

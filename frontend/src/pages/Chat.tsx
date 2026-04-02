@@ -1,63 +1,73 @@
-import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Navbar from '../components/Navbar';
 import { Link, useLocation } from 'react-router-dom';
 import { Send, Image as ImageIcon, Smile, ChevronDown, MessageCircle } from 'lucide-react';
 import { chatApi } from '../api';
-import type { ChatSessionWithDetails, ChatMessageWithSender, ChatMessage } from '../../../backend/src/types/shared';
-import { MessageType } from '../../../backend/src/types/shared';
+import type { ChatMessage, ChatMessageWithSender, ChatSessionWithDetails } from '@campus-market/shared';
+import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
 
 const EmojiPicker = React.lazy(() => import('@emoji-mart/react'));
 
-const formatTime = (isoStr: string | Date): string => {
-  if (!isoStr) return '';
-  const d = new Date(isoStr);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  if (isToday) {
-    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  }
-  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+type CurrentUser = {
+  id?: number | string;
+  studentId?: string;
+  avatarUrl?: string | null;
 };
 
-// 聊天气泡上方的时间分割显示规则
+type EmojiSelection = {
+  native?: string;
+};
+
+type ApiErrorLike = {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+};
+
+const formatTime = (isoStr: string | Date): string => {
+  if (!isoStr) return '';
+  const date = new Date(isoStr);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  if (isToday) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+};
+
 const formatMessageTimeLabel = (isoStr: string | Date): string => {
   if (!isoStr) return '';
-  const d = new Date(isoStr);
+  const date = new Date(isoStr);
   const now = new Date();
 
-  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const startNow = startOfDay(now);
-  const startMsg = startOfDay(d);
-  const diffDays = Math.floor((startNow.getTime() - startMsg.getTime()) / (24 * 60 * 60 * 1000));
+  const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const diffDays = Math.floor(
+    (startOfDay(now).getTime() - startOfDay(date).getTime()) / (24 * 60 * 60 * 1000)
+  );
+  const timeStr = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 
-  const timeStr = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-
-  if (diffDays === 0) {
-    return timeStr;
-  }
-
-  if (diffDays === 1) {
-    return `昨天 ${timeStr}`;
-  }
+  if (diffDays === 0) return timeStr;
+  if (diffDays === 1) return `昨天 ${timeStr}`;
 
   if (diffDays >= 2 && diffDays < 7) {
     const weekdayNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-    return `${weekdayNames[d.getDay()]} ${timeStr}`;
+    return `${weekdayNames[date.getDay()]} ${timeStr}`;
   }
 
-  const isSameYear = now.getFullYear() === d.getFullYear();
-  if (isSameYear) {
-    return `${d.getMonth() + 1}月${d.getDate()}日 ${timeStr}`;
+  if (now.getFullYear() === date.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`;
   }
 
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${timeStr}`;
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`;
 };
 
 const shouldShowTimeDivider = (messages: ChatMessageWithSender[], index: number): boolean => {
   if (index === 0) return true;
-  const cur = new Date(messages[index].createdAt);
-  const prev = new Date(messages[index - 1].createdAt);
-  return cur.getTime() - prev.getTime() > 5 * 60 * 1000;
+  const current = new Date(messages[index].createdAt);
+  const previous = new Date(messages[index - 1].createdAt);
+  return current.getTime() - previous.getTime() > 5 * 60 * 1000;
 };
 
 interface SessionDisplay extends Omit<ChatSessionWithDetails, 'lastMessage'> {
@@ -72,7 +82,6 @@ interface SessionDisplay extends Omit<ChatSessionWithDetails, 'lastMessage'> {
   productPrice?: number;
 }
 
-// 聊天页面：包含左侧会话列表 + 右侧消息窗口 + 底部输入区
 const Chat: React.FC = () => {
   const [message, setMessage] = useState<string>('');
   const [sessions, setSessions] = useState<SessionDisplay[]>([]);
@@ -82,15 +91,15 @@ const Chat: React.FC = () => {
   const [loadingMessages, setLoadingMessages] = useState<boolean>(false);
   const [sending, setSending] = useState<boolean>(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
-  const [emojiData, setEmojiData] = useState<any | null>(null);
+  const [emojiData, setEmojiData] = useState<unknown>(null);
   const [hasInitialScroll, setHasInitialScroll] = useState<boolean>(false);
   const [showProduct, setShowProduct] = useState<boolean>(true);
 
-  const currentUser = useMemo(() => {
+  const currentUser = useMemo<CurrentUser | null>(() => {
     try {
-      const str = localStorage.getItem('user');
-      return str ? JSON.parse(str) : null;
-    } catch (e) {
+      const rawUser = localStorage.getItem('user');
+      return rawUser ? (JSON.parse(rawUser) as CurrentUser) : null;
+    } catch {
       return null;
     }
   }, []);
@@ -99,8 +108,8 @@ const Chat: React.FC = () => {
 
   const initialSessionId = useMemo(() => {
     const params = new URLSearchParams(location.search);
-    const sid = params.get('sessionId');
-    return sid ? Number(sid) : null;
+    const sessionId = params.get('sessionId');
+    return sessionId ? Number(sessionId) : null;
   }, [location.search]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -110,6 +119,7 @@ const Chat: React.FC = () => {
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     const container = messagesContainerRef.current;
     if (!container) return;
+
     container.scrollTo({
       top: container.scrollHeight,
       behavior,
@@ -117,9 +127,10 @@ const Chat: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!messages || messages.length === 0) return;
+    if (!messages.length) return;
+
     const behavior = hasInitialScroll ? 'smooth' : 'auto';
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       scrollToBottom(behavior);
     }, 0);
 
@@ -127,8 +138,25 @@ const Chat: React.FC = () => {
       setHasInitialScroll(true);
     }
 
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [messages, hasInitialScroll]);
+
+  const loadMessages = async (sessionId: number) => {
+    setLoadingMessages(true);
+    try {
+      const res = await chatApi.getMessages(sessionId);
+      if (res.success) {
+        setMessages(res.data || []);
+      } else {
+        alert(res.message || '加载消息失败');
+      }
+    } catch (caughtError) {
+      console.error('加载消息失败', caughtError);
+      alert('加载消息失败，请稍后重试');
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
 
   const loadSessions = async (preferredSessionId: number | null) => {
     setLoadingSessions(true);
@@ -140,9 +168,9 @@ const Chat: React.FC = () => {
         if (list.length > 0) {
           let target = list[0];
           if (preferredSessionId) {
-            const found = list.find(s => s.id === preferredSessionId);
-            if (found) {
-              target = found;
+            const matched = list.find((session) => session.id === preferredSessionId);
+            if (matched) {
+              target = matched;
             }
           }
           setCurrentSessionId(target.id);
@@ -152,50 +180,31 @@ const Chat: React.FC = () => {
       } else {
         alert(res.message || '加载会话列表失败');
       }
-    } catch (error) {
-      console.error('加载会话列表失败', error);
+    } catch (caughtError) {
+      console.error('加载会话列表失败', caughtError);
       alert('加载会话列表失败，请稍后重试');
     } finally {
       setLoadingSessions(false);
     }
   };
 
-  const loadMessages = async (sessionId: number) => {
-    setLoadingMessages(true);
-    try {
-      const res = await chatApi.getMessages(sessionId);
-      if (res.success) {
-        setMessages(res.data || []);
-      } else {
-        alert(res.message || '加载消息失败');
-      }
-    } catch (error) {
-      console.error('加载消息失败', error);
-      alert('加载消息失败，请稍后重试');
-    } finally {
-      setLoadingMessages(false);
-    }
-  };
-
   useEffect(() => {
-    loadSessions(initialSessionId);
+    void loadSessions(initialSessionId);
   }, [initialSessionId]);
 
   useEffect(() => {
-    if (!showEmojiPicker || emojiData) {
-      return;
-    }
+    if (!showEmojiPicker || emojiData) return;
 
     let cancelled = false;
 
-    import('@emoji-mart/data')
-      .then(mod => {
+    void import('@emoji-mart/data')
+      .then((module) => {
         if (!cancelled) {
-          setEmojiData(mod.default ?? mod);
+          setEmojiData(module.default ?? module);
         }
       })
-      .catch(error => {
-        console.error('加载表情数据失败', error);
+      .catch((caughtError) => {
+        console.error('加载表情数据失败', caughtError);
         if (!cancelled) {
           setShowEmojiPicker(false);
         }
@@ -218,18 +227,24 @@ const Chat: React.FC = () => {
     setSending(true);
     try {
       const res = await chatApi.sendMessage(currentSessionId, {
-        type: MessageType.TEXT,
+        type: 'TEXT',
         content: message.trim(),
       });
       if (res.success) {
-        setMessages(prev => [...prev, res.data]);
+        setMessages((prev) => [...prev, res.data]);
         setMessage('');
-        setSessions(prev => prev.map(s => s.id === currentSessionId ? { ...s, lastMessage: res.data.content, lastTime: res.data.createdAt } : s));
+        setSessions((prev) =>
+          prev.map((session) =>
+            session.id === currentSessionId
+              ? { ...session, lastMessage: res.data.content, lastTime: res.data.createdAt }
+              : session
+          )
+        );
       } else {
         alert(res.message || '发送消息失败');
       }
-    } catch (error) {
-      console.error('发送消息失败', error);
+    } catch (caughtError) {
+      console.error('发送消息失败', caughtError);
       alert('发送消息失败，请稍后重试');
     } finally {
       setSending(false);
@@ -237,18 +252,22 @@ const Chat: React.FC = () => {
   };
 
   const activeSession = useMemo(
-    () => sessions.find(s => s.id === currentSessionId) || null,
+    () => sessions.find((session) => session.id === currentSessionId) || null,
     [sessions, currentSessionId]
   );
 
   const myAvatarUrl = useMemo(() => {
     if (!currentUser) return null;
     const seed = currentUser.id || currentUser.studentId || 'user';
-    return currentUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
+    return (
+      currentUser.avatarUrl ||
+      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(seed))}`
+    );
   }, [currentUser]);
 
-  const handleEmojiSelect = (emoji: string) => {
-    setMessage((prev) => prev + emoji);
+  const handleEmojiSelect = (emoji: EmojiSelection) => {
+    if (!emoji.native) return;
+    setMessage((prev) => prev + emoji.native);
     setShowEmojiPicker(false);
   };
 
@@ -257,13 +276,13 @@ const Chat: React.FC = () => {
     imageInputRef.current.click();
   };
 
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
+  const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file || !currentSessionId) {
       return;
     }
 
-    e.target.value = '';
+    event.target.value = '';
 
     try {
       setSending(true);
@@ -271,34 +290,34 @@ const Chat: React.FC = () => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (err) => reject(err);
+        reader.onerror = (caughtError) => reject(caughtError);
         reader.readAsDataURL(file);
       });
 
-      if (!dataUrl || typeof dataUrl !== 'string') {
+      if (!dataUrl) {
         alert('读取图片失败，请稍后重试');
         return;
       }
 
       const sendRes = await chatApi.sendMessage(currentSessionId, {
-        type: MessageType.IMAGE,
+        type: 'IMAGE',
         content: dataUrl,
       });
 
       if (sendRes.success) {
         setMessages((prev) => [...prev, sendRes.data]);
         setSessions((prev) =>
-          prev.map((s) =>
-            s.id === currentSessionId
-              ? { ...s, lastMessage: '[图片]', lastTime: sendRes.data.createdAt }
-              : s
+          prev.map((session) =>
+            session.id === currentSessionId
+              ? { ...session, lastMessage: '[图片]', lastTime: sendRes.data.createdAt }
+              : session
           )
         );
       } else {
         alert(sendRes.message || '发送图片失败');
       }
-    } catch (err) {
-      console.error('发送图片失败', err);
+    } catch (caughtError) {
+      console.error('发送图片失败', caughtError);
       alert('发送图片失败，请稍后重试');
     } finally {
       setSending(false);
@@ -306,49 +325,48 @@ const Chat: React.FC = () => {
   };
 
   const canRecall = (msg: ChatMessageWithSender): boolean => {
-    if (!currentUser || !msg || !msg.createdAt) return false;
+    if (!currentUser || !msg.createdAt) return false;
     if (msg.isRecalled) return false;
-    if (msg.senderId !== currentUser.id) return false;
+    if (String(msg.senderId) !== String(currentUser.id)) return false;
     const created = new Date(msg.createdAt).getTime();
     if (Number.isNaN(created)) return false;
-    const diff = Date.now() - created;
-    return diff <= 2 * 60 * 1000;
+    return Date.now() - created <= 2 * 60 * 1000;
   };
 
   const handleRecall = async (msg: ChatMessageWithSender) => {
-    if (!currentSessionId || !msg || !canRecall(msg)) return;
+    if (!currentSessionId || !canRecall(msg)) return;
+
     const isLast = messages.length > 0 && messages[messages.length - 1].id === msg.id;
     try {
       const res = await chatApi.recallMessage(msg.id);
       if (res.success && res.data) {
-        const recalled = res.data as any;
-        setMessages((prev) => prev.map((m) => (m.id === msg.id ? recalled : m)));
+        const recalled = res.data as ChatMessageWithSender;
+        setMessages((prev) => prev.map((item) => (item.id === msg.id ? recalled : item)));
         if (isLast) {
           setSessions((prev) =>
-            prev.map((s) =>
-              s.id === currentSessionId
-                ? { ...s, lastMessage: '你撤回了一条消息', lastTime: recalled.createdAt }
-                : s
+            prev.map((session) =>
+              session.id === currentSessionId
+                ? { ...session, lastMessage: '你撤回了一条消息', lastTime: recalled.createdAt }
+                : session
             )
           );
         }
       } else {
         alert(res.message || '撤回失败，请稍后重试');
       }
-    } catch (error: any) {
-      console.error('撤回消息失败', error);
-      const msgText = error?.response?.data?.message || '撤回失败，可能已超过可撤回时间';
-      alert(msgText);
+    } catch (caughtError: unknown) {
+      console.error('撤回消息失败', caughtError);
+      const errorLike = caughtError as ApiErrorLike;
+      alert(errorLike.response?.data?.message || '撤回失败，可能已超过可撤回时间');
     }
   };
 
   return (
     <div className="h-screen bg-slate-50 flex flex-col overflow-hidden">
       <Navbar />
-      
+
       <div className="flex-1 pt-24 pb-6 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 overflow-hidden">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex h-full min-h-[520px]">
-          {/* 左侧会话列表区域 */}
           <div className="w-80 border-r border-slate-100 flex flex-col hidden md:flex">
             <div className="p-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -364,20 +382,27 @@ const Chat: React.FC = () => {
               ) : (
                 sessions.map((session) => {
                   const isActive = session.id === currentSessionId;
-                  const name = session.partnerName || '同学';
+                  const name = session.partnerName || getUserDisplayName(session.buyer, '同学');
                   const seed = session.partnerId || name;
-                  const avatar = session.partnerAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
+                  const avatar =
+                    session.partnerAvatar ||
+                    getUserAvatarUrl(
+                      session.buyer,
+                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(seed))}`
+                    ) ||
+                    `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(seed))}`;
+
                   return (
                     <div
                       key={session.id}
-                      onClick={() => handleSelectSession(session)}
+                      onClick={() => void handleSelectSession(session)}
                       className={`p-4 flex items-center gap-3 cursor-pointer transition-colors ${
                         isActive ? 'bg-blue-50' : 'hover:bg-slate-50'
                       }`}
                     >
                       <div className="relative">
                         <img src={avatar} alt={name} className="w-12 h-12 rounded-full bg-slate-100" />
-                        {session.unreadCount > 0 && (
+                        {(session.unreadCount || 0) > 0 && (
                           <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs flex items-center justify-center rounded-full border-2 border-white">
                             {session.unreadCount}
                           </span>
@@ -386,11 +411,13 @@ const Chat: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline mb-1">
                           <h3 className="font-semibold text-slate-900 truncate">{name}</h3>
-                          <span className="text-xs text-slate-400">{formatTime(session.lastTime || session.updatedAt)}</span>
+                          <span className="text-xs text-slate-400">
+                            {formatTime(session.lastTime || session.updatedAt)}
+                          </span>
                         </div>
                         <p className="text-sm text-slate-500 truncate">
-                          {typeof session.lastMessage === 'string' 
-                            ? session.lastMessage 
+                          {typeof session.lastMessage === 'string'
+                            ? session.lastMessage
                             : session.lastMessage?.content || '暂无聊天记录'}
                         </p>
                       </div>
@@ -401,16 +428,16 @@ const Chat: React.FC = () => {
             </div>
           </div>
 
-          {/* 右侧聊天主区域 */}
           <div className="flex-1 flex flex-col bg-white">
-            {/* 聊天顶部 */}
             <div className="bg-white border-b border-slate-100">
               {activeSession ? (
                 <div className="flex flex-col">
                   <Link to={`/user/${activeSession.partnerId}`} className="flex items-center gap-3 p-4 group">
                     {(() => {
                       const headerSeed = activeSession.partnerId || activeSession.partnerName || 'user';
-                      const headerAvatar = activeSession.partnerAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(headerSeed)}`;
+                      const headerAvatar =
+                        activeSession.partnerAvatar ||
+                        `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(headerSeed))}`;
                       return (
                         <img
                           src={headerAvatar}
@@ -431,13 +458,13 @@ const Chat: React.FC = () => {
                   </Link>
                   {activeSession.productId && (
                     <div className="mx-4 mb-3">
-                      <div 
+                      <div
                         className="flex items-center justify-between text-xs text-slate-400 cursor-pointer px-1 py-1"
-                        onClick={() => setShowProduct(!showProduct)}
+                        onClick={() => setShowProduct((prev) => !prev)}
                       >
                         <span>正在沟通的商品</span>
-                        <ChevronDown 
-                          size={18} 
+                        <ChevronDown
+                          size={18}
                           className={`text-slate-400 transition-transform duration-200 ${showProduct ? 'rotate-180' : ''}`}
                         />
                       </div>
@@ -458,9 +485,7 @@ const Chat: React.FC = () => {
                               {activeSession.productTitle || '商品详情'}
                             </p>
                             {activeSession.productPrice != null && (
-                              <p className="mt-1 text-lg font-bold text-orange-500">
-                                ¥{activeSession.productPrice}
-                              </p>
+                              <p className="mt-1 text-lg font-bold text-orange-500">¥{activeSession.productPrice}</p>
                             )}
                           </div>
                         </Link>
@@ -473,7 +498,6 @@ const Chat: React.FC = () => {
               )}
             </div>
 
-            {/* 消息列表区域 */}
             <div
               ref={messagesContainerRef}
               className="flex-1 min-h-[260px] overflow-y-auto p-4 space-y-4 no-scrollbar bg-neutral-50"
@@ -483,10 +507,10 @@ const Chat: React.FC = () => {
               ) : !activeSession ? (
                 <div className="h-full flex items-center justify-center text-slate-400 text-sm">请选择左侧会话</div>
               ) : messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm">暂无消息，发送第一条吧～</div>
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm">暂无消息，发送第一条吧。</div>
               ) : (
                 messages.map((msg, index) => {
-                  const isMe = currentUser && msg.senderId === currentUser.id;
+                  const isMe = currentUser && String(msg.senderId) === String(currentUser.id);
                   const isRecalled = msg.isRecalled;
                   const showRecall = isMe && canRecall(msg);
                   return (
@@ -504,9 +528,7 @@ const Chat: React.FC = () => {
                           </span>
                         </div>
                       ) : (
-                        <div
-                          className={`flex gap-2 ${isMe ? 'items-center justify-end' : 'items-end justify-start'}`}
-                        >
+                        <div className={`flex gap-2 ${isMe ? 'items-center justify-end' : 'items-end justify-start'}`}>
                           <div className="max-w-[70%] flex flex-col gap-1">
                             <div className="relative">
                               <div
@@ -534,7 +556,7 @@ const Chat: React.FC = () => {
                             {showRecall && (
                               <button
                                 type="button"
-                                onClick={() => handleRecall(msg)}
+                                onClick={() => void handleRecall(msg)}
                                 className="self-end text-[11px] text-slate-400 hover:text-red-500 transition-colors"
                               >
                                 撤回
@@ -555,7 +577,6 @@ const Chat: React.FC = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* 底部输入区域 */}
             <div className="px-4 py-3 bg-white border-t border-slate-100 flex flex-col gap-3">
               <div className="flex gap-2 relative">
                 <button
@@ -595,7 +616,7 @@ const Chat: React.FC = () => {
                       {emojiData ? (
                         <EmojiPicker
                           data={emojiData}
-                          onEmojiSelect={(emoji: any) => handleEmojiSelect(emoji.native)}
+                          onEmojiSelect={(emoji: EmojiSelection) => handleEmojiSelect(emoji)}
                           theme="light"
                         />
                       ) : (
@@ -610,14 +631,14 @@ const Chat: React.FC = () => {
               <div className="flex items-end gap-2">
                 <textarea
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={(event) => setMessage(event.target.value)}
                   placeholder={activeSession ? '输入消息...' : '请选择左侧会话后再发送'}
                   rows={3}
                   className="flex-1 bg-white border-none px-1 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0 resize-none"
                   disabled={!activeSession}
                 />
                 <button
-                  onClick={handleSend}
+                  onClick={() => void handleSend()}
                   className={`p-3 rounded-xl transition-all ${
                     message.trim() && activeSession && !sending
                       ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 hover:scale-105'
@@ -637,3 +658,5 @@ const Chat: React.FC = () => {
 };
 
 export default Chat;
+
+

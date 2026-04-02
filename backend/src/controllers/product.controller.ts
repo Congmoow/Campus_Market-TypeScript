@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { ProductService } from '../services/product.service';
-import {
+import type {
   CreateProductRequest,
   UpdateProductRequest,
   UpdateProductStatusRequest,
-} from '../types/shared';
+} from '@campus-market/shared';
+import { ProductService } from '../services/product.service';
 import { successResponse } from '../utils/response.util';
 
 export class ProductController {

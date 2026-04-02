@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, FC, ChangeEvent, FormEvent } from 'react';
+﻿import { useState, useRef, useEffect, FC, ChangeEvent, FormEvent } from 'react';
 import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
 import { motion } from 'framer-motion';
@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { productApi, fileApi } from '../api';
 import { isAuthenticated } from '../lib/auth';
 import { PUBLISH_CATEGORY_ORDER, sortCategoriesByPublishOrder } from '../lib/product-categories';
-import type { ApiResponse, UploadResponse } from '../../../backend/src/types/shared';
+import type { ApiResponse, CreateProductRequest, UploadResponse } from '@campus-market/shared';
 
 const CAMPUS_OPTIONS = ['下沙校区', '南浔校区'];
 
@@ -38,7 +38,6 @@ const Publish: FC = () => {
 
   const navigate = useNavigate();
 
-  // 检查登录状态，未登录则显示登录弹窗
   useEffect(() => {
     if (!isAuthenticated()) {
       setShowAuthModal(true);
@@ -47,11 +46,13 @@ const Publish: FC = () => {
 
   useEffect(() => {
     if (!locationOpen) return;
+
     const handleClickOutside = (event: MouseEvent) => {
       if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
         setLocationOpen(false);
       }
     };
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -66,14 +67,15 @@ const Publish: FC = () => {
           setCategoryOptions(sortCategoriesByPublishOrder(res.data).map((item) => item.name));
         }
       } catch {
-        // 分类加载失败时保留默认发布分类。
+        // Keep local fallback categories when the request fails.
       }
     };
 
-    loadCategories();
+    void loadCategories();
   }, []);
 
   const handleClear = () => {
+    images.forEach((image) => URL.revokeObjectURL(image.preview));
     setImages([]);
     setCategory('');
     setTitle('');
@@ -84,31 +86,35 @@ const Publish: FC = () => {
     setError('');
   };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    files.forEach((file) => {
-      const preview = URL.createObjectURL(file);
-      const tempId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-      setImages(prev => [...prev, { id: tempId, preview, url: '', uploading: true }]);
-      uploadImage(file, tempId, preview);
-    });
-  };
-
   const uploadImage = async (file: File, id: string, preview: string) => {
     try {
       const res: ApiResponse<UploadResponse> = await fileApi.uploadImage(file, 'product');
       if (res.success && res.data?.url) {
-        setImages(prev => prev.map(img => img.id === id ? { ...img, url: res.data.url, uploading: false } : img));
+        setImages((prev) =>
+          prev.map((image) =>
+            image.id === id ? { ...image, url: res.data.url, uploading: false } : image
+          )
+        );
       } else {
-        setImages(prev => prev.filter(img => img.id !== id));
+        setImages((prev) => prev.filter((image) => image.id !== id));
         setError(res.message || '图片上传失败，请重试');
         URL.revokeObjectURL(preview);
       }
-    } catch (err) {
-      setImages(prev => prev.filter(img => img.id !== id));
+    } catch {
+      setImages((prev) => prev.filter((image) => image.id !== id));
       setError('图片上传失败，请稍后重试');
       URL.revokeObjectURL(preview);
     }
+  };
+
+  const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    files.forEach((file) => {
+      const preview = URL.createObjectURL(file);
+      const tempId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+      setImages((prev) => [...prev, { id: tempId, preview, url: '', uploading: true }]);
+      void uploadImage(file, tempId, preview);
+    });
   };
 
   const removeImage = (index: number) => {
@@ -116,11 +122,12 @@ const Publish: FC = () => {
     if (target) {
       URL.revokeObjectURL(target.preview);
     }
-    setImages(images.filter((_, i) => i !== index));
+    setImages(images.filter((_, currentIndex) => currentIndex !== index));
   };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
     if (!title.trim()) {
       setError('请输入商品标题');
       return;
@@ -141,34 +148,35 @@ const Publish: FC = () => {
       setError('请选择发布地点');
       return;
     }
-    if (images.some(img => img.uploading)) {
-      setError('还有图片正在上传，请稍候');
+    if (images.some((image) => image.uploading)) {
+      setError('还有图片正在上传，请稍等');
       return;
     }
+
     setError('');
     setSubmitting(true);
 
     try {
-      const imageUrls = images.filter(img => img.url).map(img => img.url);
-      const body = {
+      const imageUrls = images.filter((image) => image.url).map((image) => image.url);
+      const payload: CreateProductRequest = {
         title,
         description,
         price: Number(price),
         originalPrice: originalPrice ? Number(originalPrice) : null,
         categoryName: category || null,
         location: location || '校内',
-        images: imageUrls,  // 修改字段名从 imageUrls 到 images
+        images: imageUrls,
       };
 
-      const res = await productApi.create(body as any);
+      const res = await productApi.create(payload);
       if (res.success && res.data?.id) {
         navigate(`/product/${res.data.id}`);
       } else {
         setError(res.message || '发布失败，请稍后重试');
       }
-    } catch (err: any) {
-      const status = err.response?.status;
-      if (status === 401) {
+    } catch (caughtError: unknown) {
+      const maybeAxiosError = caughtError as { response?: { status?: number } };
+      if (maybeAxiosError.response?.status === 401) {
         setError('请先登录后再发布商品');
       } else {
         setError('发布失败，请稍后重试');
@@ -184,7 +192,6 @@ const Publish: FC = () => {
 
   const handleAuthModalClose = () => {
     setShowAuthModal(false);
-    // 如果用户关闭登录弹窗且未登录，返回首页
     if (!isAuthenticated()) {
       navigate('/');
     }
@@ -193,14 +200,13 @@ const Publish: FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-white pb-20">
       <Navbar />
-      
-      {/* 登录弹窗 */}
-      <AuthModal 
-        isOpen={showAuthModal} 
+
+      <AuthModal
+        isOpen={showAuthModal}
         onClose={handleAuthModalClose}
         onLoginSuccess={handleLoginSuccess}
       />
-      
+
       <div className="pt-32 max-w-3xl mx-auto px-4 sm:px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -209,33 +215,29 @@ const Publish: FC = () => {
         >
           <div className="p-8 border-b border-slate-100/50 flex items-center justify-between gap-6 bg-gradient-to-r from-blue-50/50 to-transparent">
             <div>
-              <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600">发布闲置</h1>
+              <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-600">
+                发布闲置
+              </h1>
               <p className="text-slate-500 mt-1">填写物品信息，快速回血</p>
             </div>
           </div>
 
-          {/* 悬浮纸飞机动画（在中大屏显示） */}
           <motion.div
             className="hidden sm:block absolute -top-16 -right-12 z-10"
             animate={{ y: [0, -10, 0], rotate: [0, 5, 0] }}
             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
           >
-            <LazyLottie
-              animationData={paperplaneAnimation}
-              loop={true}
-              style={{ width: 225, height: 200 }}
-            />
+            <LazyLottie animationData={paperplaneAnimation} loop={true} style={{ width: 225, height: 200 }} />
           </motion.div>
 
           <form className="p-8 space-y-8" onSubmit={handleSubmit}>
-            {/* Image Upload */}
             <div className="space-y-4">
               <label className="block text-sm font-medium text-slate-700">商品图片</label>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-                {images.map((img, index) => (
-                  <div key={index} className="relative aspect-square rounded-xl overflow-hidden group">
-                    <img src={img.preview} alt="preview" className="w-full h-full object-cover" />
-                    {img.uploading && (
+                {images.map((image, index) => (
+                  <div key={image.id} className="relative aspect-square rounded-xl overflow-hidden group">
+                    <img src={image.preview} alt="preview" className="w-full h-full object-cover" />
+                    {image.uploading && (
                       <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs">
                         上传中...
                       </div>
@@ -257,35 +259,39 @@ const Publish: FC = () => {
               </div>
             </div>
 
-            {/* Basic Info */}
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">标题 <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  标题 <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   placeholder="品牌型号 + 关键特点"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(event) => setTitle(event.target.value)}
                   className="w-full px-4 py-3 rounded-xl bg-slate-50/50 border border-slate-200 hover:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">详细描述 <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  详细描述 <span className="text-red-500">*</span>
+                </label>
                 <textarea
                   rows={5}
                   placeholder="描述一下物品的新旧程度、入手渠道、转手原因等..."
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(event) => setDescription(event.target.value)}
                   className="w-full px-4 py-3 rounded-xl bg-slate-50/50 border border-slate-200 hover:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all resize-none"
                 />
               </div>
             </div>
 
-            {/* Details */}
             <div className="grid sm:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">价格 <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  价格 <span className="text-red-500">*</span>
+                </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
                     <DollarSign size={18} />
@@ -294,14 +300,14 @@ const Publish: FC = () => {
                     type="number"
                     placeholder="0.00"
                     value={price}
-                    onChange={(e) => setPrice(e.target.value)}
+                    onChange={(event) => setPrice(event.target.value)}
                     className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50/50 border border-slate-200 hover:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">原价 (选填)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">原价（选填）</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
                     <DollarSign size={18} />
@@ -310,7 +316,7 @@ const Publish: FC = () => {
                     type="number"
                     placeholder="0.00"
                     value={originalPrice}
-                    onChange={(e) => setOriginalPrice(e.target.value)}
+                    onChange={(event) => setOriginalPrice(event.target.value)}
                     className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50/50 border border-slate-200 hover:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
                   />
                 </div>
@@ -318,27 +324,31 @@ const Publish: FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">分类 <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                分类 <span className="text-red-500">*</span>
+              </label>
               <div className="flex flex-wrap gap-2">
-                {categoryOptions.map((cat) => (
+                {categoryOptions.map((item) => (
                   <button
-                    key={cat}
+                    key={item}
                     type="button"
-                    onClick={() => setCategory(cat)}
+                    onClick={() => setCategory(item)}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                      category === cat
-                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 ring-2 ring-blue-500/20"
-                        : "bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      category === item
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 ring-2 ring-blue-500/20'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
-                    {cat}
+                    {item}
                   </button>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">发布地点 <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                发布地点 <span className="text-red-500">*</span>
+              </label>
               <div className="relative" ref={locationDropdownRef}>
                 <button
                   type="button"
@@ -353,10 +363,7 @@ const Publish: FC = () => {
                   </span>
                 </button>
                 <div className="pointer-events-none absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400">
-                  <ChevronDown
-                    size={16}
-                    className={`transition-transform ${locationOpen ? 'rotate-180' : ''}`}
-                  />
+                  <ChevronDown size={16} className={`transition-transform ${locationOpen ? 'rotate-180' : ''}`} />
                 </div>
                 {locationOpen && (
                   <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg py-1">
@@ -378,11 +385,8 @@ const Publish: FC = () => {
               </div>
             </div>
 
-            {error && (
-              <div className="text-red-500 text-sm">{error}</div>
-            )}
+            {error && <div className="text-red-500 text-sm">{error}</div>}
 
-            {/* Submit Actions */}
             <div className="pt-6 flex items-center gap-4">
               <button
                 type="button"
@@ -396,7 +400,9 @@ const Publish: FC = () => {
                   strokeLinecap="square"
                   className="transform transition-transform duration-200 group-hover:-translate-y-0.5"
                 />
-                <span className="transform transition-transform duration-200 group-hover:-translate-y-0.5">清空填写</span>
+                <span className="transform transition-transform duration-200 group-hover:-translate-y-0.5">
+                  清空填写
+                </span>
               </button>
               <button
                 type="submit"
@@ -414,7 +420,9 @@ const Publish: FC = () => {
                       strokeLinecap="square"
                       className="transform transition-transform duration-200 group-hover:-translate-y-0.5"
                     />
-                    <span className="transform transition-transform duration-200 group-hover:-translate-y-0.5">立即发布</span>
+                    <span className="transform transition-transform duration-200 group-hover:-translate-y-0.5">
+                      立即发布
+                    </span>
                   </>
                 )}
               </button>

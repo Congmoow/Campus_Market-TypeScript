@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { z } from 'zod';
 import { OrderController } from '../controllers/order.controller';
 import { authenticate } from '../middlewares/auth.middleware';
@@ -14,9 +14,9 @@ const orderController = new OrderController();
 
 const createOrderSchema = z.object({
   productId: z.coerce.number().int().positive(),
-  deliveryAddress: z.string().trim().min(1),
-  deliveryPhone: z.string().trim().min(1),
-  deliveryName: z.string().trim().min(1),
+  meetLocation: z.string().trim().min(1),
+  contactPhone: z.string().trim().min(1),
+  contactName: z.string().trim().min(1),
   remark: z.string().optional(),
 });
 
@@ -79,3 +79,4 @@ router.post(
 );
 
 export default router;
+

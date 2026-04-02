@@ -79,6 +79,8 @@ describe('ProductService', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].title).toBe('Product 1');
+      expect(result[0].seller.phone).toBe('13800138000');
+      expect(Reflect.get(result[0].seller as unknown as object, 'email')).toBeUndefined();
       expect(prisma.product.findMany).toHaveBeenCalledWith({
         where: { status: 'ON_SALE' },
         orderBy: { createdAt: 'desc' },
@@ -245,6 +247,7 @@ describe('ProductService', () => {
 
       expect(result.seller.profile?.name).toBe('Test User');
       expect(result.seller.profile?.nickname).toBe('Test User');
+      expect(result.seller.phone).toBe('13800138000');
     });
 
     it('should throw error if product not found', async () => {
@@ -580,3 +583,4 @@ describe('ProductService', () => {
     });
   });
 });
+

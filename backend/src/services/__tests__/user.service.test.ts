@@ -106,6 +106,7 @@ describe('UserService', () => {
         expect.objectContaining({
           id: 1,
           studentId: '20230001',
+          phone: '13900000000',
           name: 'New Name',
           avatarUrl: '/new.png',
           major: 'Software Engineering',

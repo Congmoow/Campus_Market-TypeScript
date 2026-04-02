@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
+import type { SendMessageRequest, StartChatRequest } from '@campus-market/shared';
 import { ChatService } from '../services/chat.service';
-import { SendMessageRequest, StartChatRequest } from '../types/shared';
 import { successResponse } from '../utils/response.util';
 
 export class ChatController {
