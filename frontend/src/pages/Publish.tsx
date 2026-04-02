@@ -9,6 +9,7 @@ import { FolderUpload, Clear } from '@icon-park/react';
 import { useNavigate } from 'react-router-dom';
 import { productApi, fileApi } from '../api';
 import { isAuthenticated } from '../lib/auth';
+import { isUnauthorizedResponseError } from '../lib/http';
 import { PUBLISH_CATEGORY_ORDER, sortCategoriesByPublishOrder } from '../lib/product-categories';
 import type { ApiResponse, CreateProductRequest, UploadResponse } from '@campus-market/shared';
 
@@ -48,7 +49,10 @@ const Publish: FC = () => {
     if (!locationOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
+      if (
+        locationDropdownRef.current &&
+        !locationDropdownRef.current.contains(event.target as Node)
+      ) {
         setLocationOpen(false);
       }
     };
@@ -92,8 +96,8 @@ const Publish: FC = () => {
       if (res.success && res.data?.url) {
         setImages((prev) =>
           prev.map((image) =>
-            image.id === id ? { ...image, url: res.data.url, uploading: false } : image
-          )
+            image.id === id ? { ...image, url: res.data.url, uploading: false } : image,
+          ),
         );
       } else {
         setImages((prev) => prev.filter((image) => image.id !== id));
@@ -175,8 +179,7 @@ const Publish: FC = () => {
         setError(res.message || '发布失败，请稍后重试');
       }
     } catch (caughtError: unknown) {
-      const maybeAxiosError = caughtError as { response?: { status?: number } };
-      if (maybeAxiosError.response?.status === 401) {
+      if (isUnauthorizedResponseError(caughtError)) {
         setError('请先登录后再发布商品');
       } else {
         setError('发布失败，请稍后重试');
@@ -227,7 +230,11 @@ const Publish: FC = () => {
             animate={{ y: [0, -10, 0], rotate: [0, 5, 0] }}
             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
           >
-            <LazyLottie animationData={paperplaneAnimation} loop={true} style={{ width: 225, height: 200 }} />
+            <LazyLottie
+              animationData={paperplaneAnimation}
+              loop={true}
+              style={{ width: 225, height: 200 }}
+            />
           </motion.div>
 
           <form className="p-8 space-y-8" onSubmit={handleSubmit}>
@@ -235,7 +242,10 @@ const Publish: FC = () => {
               <label className="block text-sm font-medium text-slate-700">商品图片</label>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
                 {images.map((image, index) => (
-                  <div key={image.id} className="relative aspect-square rounded-xl overflow-hidden group">
+                  <div
+                    key={image.id}
+                    className="relative aspect-square rounded-xl overflow-hidden group"
+                  >
                     <img src={image.preview} alt="preview" className="w-full h-full object-cover" />
                     {image.uploading && (
                       <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs">
@@ -254,7 +264,13 @@ const Publish: FC = () => {
                 <label className="aspect-square rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2 text-slate-400 cursor-pointer hover:border-blue-500 hover:text-blue-500 hover:bg-blue-50/50 transition-all bg-slate-50/50">
                   <Upload size={24} />
                   <span className="text-xs font-medium">上传图片</span>
-                  <input type="file" multiple className="hidden" onChange={handleImageUpload} accept="image/*" />
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                  />
                 </label>
               </div>
             </div>
@@ -307,7 +323,9 @@ const Publish: FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">原价（选填）</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  原价（选填）
+                </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
                     <DollarSign size={18} />
@@ -363,7 +381,10 @@ const Publish: FC = () => {
                   </span>
                 </button>
                 <div className="pointer-events-none absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400">
-                  <ChevronDown size={16} className={`transition-transform ${locationOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform ${locationOpen ? 'rotate-180' : ''}`}
+                  />
                 </div>
                 {locationOpen && (
                   <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg py-1">

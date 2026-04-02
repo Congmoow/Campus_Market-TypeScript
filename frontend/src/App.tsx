@@ -1,12 +1,6 @@
-import {
-  BrowserRouter as Router,
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-} from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { lazy, ReactNode, Suspense, useEffect } from 'react';
-import { isAdmin, isAuthenticated } from './lib/auth';
+import { restoreAuthSession, useAuthSession } from './lib/auth';
 
 const Home = lazy(() => import('./pages/Home'));
 const Marketplace = lazy(() => import('./pages/Marketplace'));
@@ -48,8 +42,13 @@ const ScrollToTop = () => {
 
 const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
+  const { status } = useAuthSession();
 
-  if (!isAuthenticated()) {
+  if (status === 'loading') {
+    return <AppFallback />;
+  }
+
+  if (status === 'unauthenticated') {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
@@ -58,12 +57,17 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
 
 const AdminRoute = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
+  const { status, user } = useAuthSession();
 
-  if (!isAuthenticated()) {
+  if (status === 'loading') {
+    return <AppFallback />;
+  }
+
+  if (status === 'unauthenticated') {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (!isAdmin()) {
+  if (user?.role !== 'ADMIN') {
     return <Navigate to="/" replace />;
   }
 
@@ -71,6 +75,10 @@ const AdminRoute = ({ children }: { children: ReactNode }) => {
 };
 
 function App() {
+  useEffect(() => {
+    void restoreAuthSession();
+  }, []);
+
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Suspense fallback={<AppFallback />}>

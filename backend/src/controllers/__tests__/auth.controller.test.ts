@@ -1,16 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthController } from '../auth.controller';
 
+const login = jest.fn().mockResolvedValue({
+  accessToken: 'access-token',
+  refreshToken: 'refresh-token',
+  user: {
+    id: 1,
+    studentId: '20240001',
+    role: 'USER',
+  },
+});
+const register = jest.fn().mockResolvedValue({
+  accessToken: 'register-access-token',
+  refreshToken: 'register-refresh-token',
+  user: {
+    id: 2,
+    studentId: '20240002',
+    role: 'USER',
+  },
+});
+const refresh = jest.fn().mockResolvedValue({
+  accessToken: 'rotated-access-token',
+  refreshToken: 'rotated-refresh-token',
+});
+const logout = jest.fn().mockResolvedValue(undefined);
+const resetPassword = jest.fn().mockResolvedValue(undefined);
+
 jest.mock('../../services/auth.service', () => ({
   AuthService: jest.fn().mockImplementation(() => ({
-    login: jest.fn().mockResolvedValue({
-      token: 'token',
-      user: {
-        id: 1,
-        studentId: '20240001',
-        role: 'USER',
-      },
-    }),
+    login,
+    register,
+    refresh,
+    logout,
+    resetPassword,
   })),
 }));
 
@@ -34,6 +56,8 @@ describe('AuthController', () => {
     };
     res = {
       json: jest.fn(),
+      cookie: jest.fn(),
+      clearCookie: jest.fn(),
     };
     next = jest.fn();
     jest.clearAllMocks();
@@ -50,5 +74,140 @@ describe('AuthController', () => {
 
     logSpy.mockRestore();
     errorSpy.mockRestore();
+  });
+
+  it('sets the refresh token cookie on login success and only returns the access token in JSON', async () => {
+    await controller.login(req as Request, res as Response, next);
+
+    expect(login).toHaveBeenCalledWith(
+      req.body,
+      expect.objectContaining({
+        userAgent: undefined,
+        ipAddress: undefined,
+      }),
+    );
+    expect(res.cookie).toHaveBeenCalledWith(
+      'refreshToken',
+      'refresh-token',
+      expect.objectContaining({
+        httpOnly: true,
+        path: '/api/auth',
+      }),
+    );
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: {
+          token: 'access-token',
+          user: {
+            id: 1,
+            studentId: '20240001',
+            role: 'USER',
+          },
+        },
+        message: '登录成功',
+      }),
+    );
+  });
+
+  it('returns readable Chinese success messages for register, logout and reset password', async () => {
+    req = {
+      ...req,
+      user: {
+        id: 1,
+        studentId: '20240001',
+        role: 'USER',
+      } as any,
+    };
+
+    await controller.register(req as Request, res as Response, next);
+    await controller.logout(req as Request, res as Response, next);
+    await controller.resetPassword(
+      {
+        ...req,
+        body: {
+          oldPassword: 'old-password',
+          newPassword: 'new-password',
+        },
+      } as Request,
+      res as Response,
+      next,
+    );
+
+    expect(res.json).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        message: '注册成功',
+      }),
+    );
+    expect(res.json).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        message: '退出成功',
+      }),
+    );
+    expect(res.json).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        message: '密码修改成功',
+      }),
+    );
+  });
+
+  it('rotates the refresh cookie on refresh success', async () => {
+    req = {
+      headers: {
+        cookie: 'refreshToken=refresh-cookie-token',
+        'user-agent': 'jest-agent',
+      },
+      ip: '127.0.0.1',
+    };
+
+    await controller.refresh(req as Request, res as Response, next);
+
+    expect(refresh).toHaveBeenCalledWith('refresh-cookie-token', {
+      userAgent: 'jest-agent',
+      ipAddress: '127.0.0.1',
+    });
+    expect(res.cookie).toHaveBeenCalledWith(
+      'refreshToken',
+      'rotated-refresh-token',
+      expect.objectContaining({
+        httpOnly: true,
+        path: '/api/auth',
+      }),
+    );
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: {
+          token: 'rotated-access-token',
+        },
+      }),
+    );
+  });
+
+  it('clears the refresh cookie on logout', async () => {
+    req = {
+      headers: {
+        cookie: 'refreshToken=refresh-cookie-token',
+      },
+    };
+
+    await controller.logout(req as Request, res as Response, next);
+
+    expect(logout).toHaveBeenCalledWith('refresh-cookie-token');
+    expect(res.clearCookie).toHaveBeenCalledWith(
+      'refreshToken',
+      expect.objectContaining({
+        httpOnly: true,
+        path: '/api/auth',
+      }),
+    );
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+      }),
+    );
   });
 });

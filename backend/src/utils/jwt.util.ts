@@ -3,10 +3,10 @@ import type { AuthTokenPayload } from '@campus-market/shared';
 import { getJwtConfig } from '../config/jwt.config';
 
 export function generateToken(payload: AuthTokenPayload): string {
-  const { secret, expiresIn } = getJwtConfig();
+  const { secret, accessTokenExpiresIn } = getJwtConfig();
 
   return jwt.sign(payload, secret, {
-    expiresIn,
+    expiresIn: accessTokenExpiresIn,
   } as jwt.SignOptions);
 }
 

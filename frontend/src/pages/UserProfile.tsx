@@ -6,7 +6,12 @@ import AuthModal from '../components/AuthModal';
 import ProductCard from '../components/ProductCard';
 import EditProfileModal from '../components/EditProfileModal';
 import { chatApi, userApi } from '../api';
-import { getStoredUser, isAuthenticated } from '../lib/auth';
+import {
+  getCurrentUser,
+  isAuthenticated,
+  updateAuthSessionUser,
+  useAuthSession,
+} from '../lib/auth';
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
 import type { ProfileContainer } from '../lib/profile-update';
 import type { ProductListItem, User, UserProfile as UserProfileType } from '@campus-market/shared';
@@ -60,20 +65,6 @@ type ProfileData = Omit<User, 'studentId'> & {
   soldCount?: number;
 };
 
-interface CachedProfileUser {
-  id?: number;
-  userId?: number;
-  studentId?: string;
-  name?: string;
-  avatarUrl?: string;
-  campus?: string;
-  major?: string;
-  grade?: string;
-  bio?: string;
-  createdAt?: string | Date;
-  joinAt?: string | Date;
-}
-
 type ProductTab = 'ON_SALE' | 'SOLD';
 
 const PRODUCT_TAB_QUERY_KEY = 'tab';
@@ -106,79 +97,54 @@ const getInitialProfile = (userId: string | undefined): ProfileData | null => {
     return null;
   }
 
-  const storedUser = getStoredUser<CachedProfileUser>();
-  if (!storedUser) {
-    return null;
+  const currentUser = getCurrentUser();
+  if (currentUser && String(currentUser.id) === userId) {
+    return {
+      ...currentUser,
+      avatarUrl: currentUser.avatar || currentUser.profile?.avatarUrl,
+      name: getUserDisplayName(currentUser, currentUser.studentId),
+      campus: currentUser.profile?.campus,
+      major: currentUser.profile?.major,
+      grade: currentUser.profile?.grade,
+      bio: currentUser.profile?.bio,
+      joinAt:
+        currentUser.createdAt instanceof Date
+          ? currentUser.createdAt.toISOString()
+          : String(currentUser.createdAt),
+    };
   }
 
-  const storedUserId = storedUser.userId ?? storedUser.id;
-  if (typeof storedUserId !== 'number' || String(storedUserId) !== userId) {
-    return null;
-  }
+  return null;
+};
+
+const buildSessionUser = (profileData: ProfileData, currentUser: User): User => {
+  const nextAvatar = getUserAvatarUrl(profileData) || currentUser.avatar;
 
   return {
-    id: storedUserId,
-    studentId: storedUser.studentId || '',
-    phone: undefined,
-    createdAt: storedUser.createdAt ? new Date(storedUser.createdAt) : new Date(0),
-    updatedAt: new Date(0),
-    name: storedUser.name,
-    avatarUrl: storedUser.avatarUrl,
-    campus: storedUser.campus,
-    major: storedUser.major,
-    grade: storedUser.grade,
-    bio: storedUser.bio,
-    joinAt: storedUser.joinAt ? String(storedUser.joinAt) : undefined,
+    ...currentUser,
+    ...profileData,
+    studentId: profileData.studentId || currentUser.studentId,
+    avatar: nextAvatar,
     profile: {
-      id: storedUserId,
-      userId: storedUserId,
-      name: storedUser.name,
-      studentId: storedUser.studentId,
-      campus: storedUser.campus,
-      avatarUrl: storedUser.avatarUrl,
-      major: storedUser.major,
-      grade: storedUser.grade,
-      bio: storedUser.bio,
+      ...(currentUser.profile ?? {}),
+      ...(profileData.profile ?? {}),
+      id: profileData.profile?.id ?? currentUser.profile?.id ?? currentUser.id,
+      userId: profileData.profile?.userId ?? currentUser.profile?.userId ?? currentUser.id,
+      name: profileData.name || profileData.profile?.name || currentUser.profile?.name,
+      studentId:
+        profileData.studentId || profileData.profile?.studentId || currentUser.profile?.studentId,
+      campus: getProfileField(profileData, 'campus') || currentUser.profile?.campus,
+      major: getProfileField(profileData, 'major') || currentUser.profile?.major,
+      grade: getProfileField(profileData, 'grade') || currentUser.profile?.grade,
+      bio: profileData.bio || profileData.profile?.bio || currentUser.profile?.bio,
+      avatarUrl: nextAvatar,
     },
   };
 };
 
-const syncCurrentUserCache = (profileData: ProfileData) => {
-  const storedUser = getStoredUser<CachedProfileUser>();
-  const localUserId = storedUser?.userId ?? storedUser?.id;
-
-  if (!storedUser || String(localUserId) !== String(profileData.id)) {
-    return;
-  }
-
-  const displayName =
-    profileData.name || profileData.profile?.name || storedUser.name || storedUser.studentId;
-
-  const updatedUser = {
-    ...storedUser,
-    id: profileData.id,
-    name: displayName,
-    studentId: profileData.studentId || storedUser.studentId,
-    avatarUrl: getUserAvatarUrl(profileData) || storedUser.avatarUrl,
-    campus: getProfileField(profileData, 'campus') || storedUser.campus,
-    major: getProfileField(profileData, 'major') || storedUser.major,
-    grade: getProfileField(profileData, 'grade') || storedUser.grade,
-    bio: profileData.bio || profileData.profile?.bio || storedUser.bio,
-    createdAt:
-      profileData.createdAt instanceof Date
-        ? profileData.createdAt.toISOString()
-        : profileData.createdAt || storedUser.createdAt,
-    joinAt:
-      profileData.joinAt ||
-      (profileData.createdAt instanceof Date
-        ? profileData.createdAt.toISOString()
-        : profileData.createdAt) ||
-      storedUser.joinAt,
-  };
-
-  localStorage.setItem('user', JSON.stringify(updatedUser));
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('user-profile-updated'));
+const syncCurrentUserCache = (profileData: ProfileData, currentUser: User | null) => {
+  if (currentUser && String(currentUser.id) === String(profileData.id)) {
+    updateAuthSessionUser(buildSessionUser(profileData, currentUser));
   }
 };
 
@@ -190,6 +156,7 @@ const LoadingLine: React.FC<{ className?: string }> = ({ className = '' }) => (
 );
 
 const UserProfile: React.FC = () => {
+  const { user: sessionUser } = useAuthSession();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData | null>(() => getInitialProfile(id));
@@ -202,8 +169,8 @@ const UserProfile: React.FC = () => {
     getProductTabFromSearch(typeof window === 'undefined' ? '' : window.location.search),
   );
 
-  const currentUser = getStoredUser<CachedProfileUser>();
-  const isCurrentUser = !!currentUser && String(currentUser.userId || currentUser.id) === id;
+  const currentUser = sessionUser;
+  const isCurrentUser = !!currentUser && String(currentUser.id) === id;
 
   const handleNeedLogin = () => {
     setShowAuthModal(true);
@@ -303,7 +270,7 @@ const UserProfile: React.FC = () => {
       if (profileRes.success && profileRes.data) {
         nextProfile = profileRes.data as ProfileData;
         setProfile(nextProfile);
-        syncCurrentUserCache(nextProfile);
+        syncCurrentUserCache(nextProfile, currentUser);
       } else {
         console.error(profileRes.message || '加载用户信息失败');
       }
@@ -342,7 +309,7 @@ const UserProfile: React.FC = () => {
 
     setProfile(nextProfile);
     try {
-      syncCurrentUserCache(nextProfile);
+      syncCurrentUserCache(nextProfile, currentUser);
     } catch {
       // Ignore local cache sync errors.
     }

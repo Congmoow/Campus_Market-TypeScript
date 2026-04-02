@@ -76,6 +76,10 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface AccessTokenResponse {
+  token: string;
+}
+
 export interface UpdateProfileRequest {
   name?: string;
   studentId?: string;

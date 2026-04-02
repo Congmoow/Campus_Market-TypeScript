@@ -17,14 +17,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import AuthModal from './AuthModal';
-import { userApi, chatApi } from '../api';
-import {
-  AUTH_CHANGE_EVENT,
-  clearAuthState,
-  getCurrentUser,
-  getStoredUser,
-  isAdmin,
-} from '../lib/auth';
+import { chatApi } from '../api';
+import { clearAuthState, useAuthSession } from '../lib/auth';
 import { getUserDisplayName } from '../lib/user-display';
 import type { ChatSessionWithDetails } from '@campus-market/shared';
 
@@ -59,28 +53,27 @@ const formatNotificationTime = (isoStr: string | Date | undefined): string => {
   return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
 };
 
-const readAuthUser = (): UserData | null => {
-  const currentUser = getCurrentUser();
-  return currentUser ? (currentUser as UserData) : null;
-};
-
 const Navbar: React.FC = () => {
+  const { status, user } = useAuthSession();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [currentUser, setCurrentUser] = useState<UserData | null>(() => readAuthUser());
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!readAuthUser());
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const unreadCount = notifications.reduce((sum, n) => sum + (n.unreadCount || 0), 0);
   const [showMobileNotifications, setShowMobileNotifications] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const navigate = useNavigate();
-
-  const syncAuthState = () => {
-    const nextUser = readAuthUser();
-    setCurrentUser(nextUser);
-    setIsLoggedIn(!!nextUser);
-  };
+  const isLoggedIn = status === 'authenticated';
+  const currentUser: UserData | null = user
+    ? {
+        id: user.id,
+        studentId: user.studentId,
+        name: getUserDisplayName(user, user.studentId),
+        avatarUrl: user.avatar || user.profile?.avatarUrl,
+        campus: user.profile?.campus,
+        role: user.role,
+      }
+    : null;
 
   const markAllNotificationsRead = async () => {
     const unreadSessions = notifications.filter((n) => n.unreadCount > 0);
@@ -137,51 +130,6 @@ const Navbar: React.FC = () => {
     loadNotifications();
   }, [isLoggedIn]);
 
-  useEffect(() => {
-    const syncProfile = async () => {
-      const baseUser = getStoredUser<UserData>();
-      if (!baseUser?.id) return;
-
-      if (baseUser.avatarUrl) {
-        setCurrentUser(baseUser);
-        return;
-      }
-
-      try {
-        const res = await userApi.getProfile(baseUser.id);
-        if (res.success && res.data) {
-          const displayName = getUserDisplayName(res.data, getUserDisplayName(baseUser, '同学'));
-          const updatedUser: UserData = {
-            ...baseUser,
-            name: displayName,
-            avatarUrl: res.data.avatar || res.data.profile?.avatarUrl || baseUser.avatarUrl,
-            campus: res.data.profile?.campus || baseUser.campus,
-          };
-          localStorage.setItem('user', JSON.stringify(updatedUser));
-          setCurrentUser(updatedUser);
-        }
-      } catch {
-        // ignore profile sync failures
-      }
-    };
-
-    if (isLoggedIn) {
-      syncProfile();
-    }
-  }, [isLoggedIn]);
-
-  useEffect(() => {
-    window.addEventListener('storage', syncAuthState);
-    window.addEventListener(AUTH_CHANGE_EVENT, syncAuthState as EventListener);
-    window.addEventListener('user-profile-updated', syncAuthState as EventListener);
-
-    return () => {
-      window.removeEventListener('storage', syncAuthState);
-      window.removeEventListener(AUTH_CHANGE_EVENT, syncAuthState as EventListener);
-      window.removeEventListener('user-profile-updated', syncAuthState as EventListener);
-    };
-  }, []);
-
   const handleSearchSubmit = () => {
     const q = searchKeyword.trim();
     if (!q) return;
@@ -189,14 +137,11 @@ const Navbar: React.FC = () => {
   };
 
   const handleLoginSuccess = () => {
-    syncAuthState();
     setShowAuthModal(false);
   };
 
   const handleLogout = () => {
     clearAuthState('logout');
-    setIsLoggedIn(false);
-    setCurrentUser(null);
     navigate('/');
   };
 
@@ -389,7 +334,7 @@ const Navbar: React.FC = () => {
                         <span className="flex-1">我的收藏</span>
                         <ChevronRight size={18} className="text-slate-300" />
                       </Link>
-                      {isAdmin() && (
+                      {currentUser?.role === 'ADMIN' && (
                         <>
                           <div className="h-px bg-slate-100 my-2" />
                           <Link
@@ -601,7 +546,7 @@ const Navbar: React.FC = () => {
                     >
                       <Heart size={20} /> 我的收藏
                     </Link>
-                    {isAdmin() && (
+                    {currentUser?.role === 'ADMIN' && (
                       <Link
                         to="/admin"
                         className="p-3 hover:bg-purple-50 rounded-lg flex items-center gap-3 text-purple-600"

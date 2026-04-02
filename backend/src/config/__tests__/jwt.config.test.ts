@@ -6,7 +6,7 @@ describe('jwt.config', () => {
       getJwtConfig({
         JWT_SECRET: '',
         JWT_EXPIRATION: '7d',
-      } as NodeJS.ProcessEnv)
+      } as NodeJS.ProcessEnv),
     ).toThrow('JWT_SECRET');
   });
 
@@ -15,10 +15,13 @@ describe('jwt.config', () => {
       getJwtConfig({
         JWT_SECRET: 'strong-secret',
         JWT_EXPIRATION: '15m',
-      } as NodeJS.ProcessEnv)
+        JWT_REFRESH_EXPIRATION: '14d',
+      } as NodeJS.ProcessEnv),
     ).toEqual({
       secret: 'strong-secret',
       expiresIn: '15m',
+      accessTokenExpiresIn: '15m',
+      refreshTokenExpiresIn: '14d',
     });
   });
 });

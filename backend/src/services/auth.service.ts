@@ -1,6 +1,5 @@
 import type { User as PrismaUser, UserProfile as PrismaUserProfile } from '@prisma/client';
 import type {
-  AuthResponse,
   LoginRequest,
   RegisterRequest,
   ResetPasswordRequest,
@@ -10,11 +9,10 @@ import { prisma } from '../utils/prisma.util';
 import { mapUser } from '../mappers/shared.mapper';
 import { hashPassword, comparePassword } from '../utils/password.util';
 import { generateToken } from '../utils/jwt.util';
-import {
-  BusinessException,
-  UnauthorizedException,
-  ValidationException,
-} from '../utils/error.util';
+import { durationToMs } from '../utils/duration.util';
+import { generateRefreshToken, hashRefreshToken } from '../utils/refresh-token.util';
+import { getJwtConfig } from '../config/jwt.config';
+import { BusinessException, UnauthorizedException, ValidationException } from '../utils/error.util';
 
 type UniqueConstraintError = {
   code?: string;
@@ -23,8 +21,27 @@ type UniqueConstraintError = {
   };
 };
 
+export interface AuthSessionContext {
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}
+
+export interface AuthSessionResult {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
+}
+
+export interface RefreshAccessTokenResult {
+  accessToken: string;
+  refreshToken: string;
+}
+
 export class AuthService {
-  async register(data: RegisterRequest): Promise<AuthResponse> {
+  async register(
+    data: RegisterRequest,
+    sessionContext: AuthSessionContext = {},
+  ): Promise<AuthSessionResult> {
     this.validateRegisterData(data);
 
     const existingUser = await prisma.user.findUnique({
@@ -48,54 +65,45 @@ export class AuthService {
     const hashedPassword = await hashPassword(data.password);
 
     try {
-      const { user, profile } = await prisma.$transaction(
-        async (tx) => {
-          const now = new Date();
-          const user = await tx.user.create({
-            data: {
-              studentId: data.studentId,
-              passwordHash: hashedPassword,
-              phone: data.phone || null,
-              role: 'USER',
-              enabled: true,
-              createdAt: now,
-              updatedAt: now,
-            },
-          });
+      const { user, profile } = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const user = await tx.user.create({
+          data: {
+            studentId: data.studentId,
+            passwordHash: hashedPassword,
+            phone: data.phone || null,
+            role: 'USER',
+            enabled: true,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
 
-          const profile = await tx.userProfile.create({
-            data: {
-              userId: user.id,
-              name: data.name || data.studentId,
-              studentId: data.studentId,
-              credit: 700,
-              createdAt: now,
-              updatedAt: now,
-            },
-          });
+        const profile = await tx.userProfile.create({
+          data: {
+            userId: user.id,
+            name: data.name || data.studentId,
+            studentId: data.studentId,
+            credit: 700,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
 
-          return { user, profile };
-        }
-      );
-
-      const token = generateToken({
-        id: Number(user.id),
-        studentId: user.studentId,
-        phone: user.phone || undefined,
-        role: user.role,
+        return { user, profile };
       });
 
-      return {
-        token,
-        user: this.formatUserResponse(user, profile),
-      };
+      return this.createUserSession(user, profile, sessionContext);
     } catch (error) {
       this.throwIfUniqueConstraint(error);
       throw error;
     }
   }
 
-  async login(data: LoginRequest): Promise<AuthResponse> {
+  async login(
+    data: LoginRequest,
+    sessionContext: AuthSessionContext = {},
+  ): Promise<AuthSessionResult> {
     if (!data.studentId || !data.password) {
       throw new ValidationException('学号和密码不能为空');
     }
@@ -123,17 +131,86 @@ export class AuthService {
       where: { userId: user.id },
     });
 
-    const token = generateToken({
-      id: Number(user.id),
-      studentId: user.studentId,
-      phone: user.phone || undefined,
-      role: user.role,
+    return this.createUserSession(user, profile, sessionContext);
+  }
+
+  async refresh(
+    refreshToken: string,
+    sessionContext: AuthSessionContext = {},
+  ): Promise<RefreshAccessTokenResult> {
+    if (!refreshToken?.trim()) {
+      throw new UnauthorizedException('未提供 refresh token');
+    }
+
+    const tokenHash = hashRefreshToken(refreshToken);
+    const session = await prisma.refreshSession.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!session || session.revokedAt || session.expiresAt <= new Date()) {
+      throw new UnauthorizedException('refresh token 无效或已过期');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+    });
+
+    if (!user || !user.enabled) {
+      throw new UnauthorizedException('用户不存在或已被禁用');
+    }
+
+    const nextRefreshToken = generateRefreshToken();
+    const nextRefreshTokenHash = hashRefreshToken(nextRefreshToken);
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await tx.refreshSession.update({
+        where: { tokenHash },
+        data: {
+          revokedAt: now,
+          replacedByTokenHash: nextRefreshTokenHash,
+        },
+      });
+
+      await tx.refreshSession.create({
+        data: {
+          userId: session.userId,
+          tokenHash: nextRefreshTokenHash,
+          userAgent: this.normalizeUserAgent(sessionContext.userAgent),
+          ipAddress: this.normalizeIpAddress(sessionContext.ipAddress),
+          expiresAt: this.buildRefreshTokenExpiry(now),
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
     });
 
     return {
-      token,
-      user: this.formatUserResponse(user, profile),
+      accessToken: this.generateAccessToken(user),
+      refreshToken: nextRefreshToken,
     };
+  }
+
+  async logout(refreshToken: string | null | undefined): Promise<void> {
+    if (!refreshToken?.trim()) {
+      return;
+    }
+
+    const tokenHash = hashRefreshToken(refreshToken);
+    const session = await prisma.refreshSession.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!session || session.revokedAt) {
+      return;
+    }
+
+    await prisma.refreshSession.update({
+      where: { tokenHash },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
   }
 
   async getCurrentUser(userId: number): Promise<User> {
@@ -169,10 +246,7 @@ export class AuthService {
       throw new UnauthorizedException('用户不存在');
     }
 
-    const isOldPasswordValid = await comparePassword(
-      data.oldPassword,
-      user.passwordHash
-    );
+    const isOldPasswordValid = await comparePassword(data.oldPassword, user.passwordHash);
 
     if (!isOldPasswordValid) {
       throw new BusinessException('旧密码错误');
@@ -228,10 +302,56 @@ export class AuthService {
     }
   }
 
-  private formatUserResponse(
-    user: PrismaUser,
-    profile?: PrismaUserProfile | null
-  ): User {
+  private formatUserResponse(user: PrismaUser, profile?: PrismaUserProfile | null): User {
     return mapUser(user, profile);
+  }
+
+  private async createUserSession(
+    user: PrismaUser,
+    profile: PrismaUserProfile | null | undefined,
+    sessionContext: AuthSessionContext,
+  ): Promise<AuthSessionResult> {
+    const refreshToken = generateRefreshToken();
+    const now = new Date();
+
+    await prisma.refreshSession.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashRefreshToken(refreshToken),
+        userAgent: this.normalizeUserAgent(sessionContext.userAgent),
+        ipAddress: this.normalizeIpAddress(sessionContext.ipAddress),
+        expiresAt: this.buildRefreshTokenExpiry(now),
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    return {
+      accessToken: this.generateAccessToken(user),
+      refreshToken,
+      user: this.formatUserResponse(user, profile),
+    };
+  }
+
+  private generateAccessToken(user: PrismaUser): string {
+    return generateToken({
+      id: Number(user.id),
+      studentId: user.studentId,
+      phone: user.phone || undefined,
+      role: user.role,
+    });
+  }
+
+  private buildRefreshTokenExpiry(from: Date): Date {
+    const { refreshTokenExpiresIn } = getJwtConfig();
+    return new Date(from.getTime() + durationToMs(refreshTokenExpiresIn));
+  }
+
+  private normalizeUserAgent(userAgent?: string | null): string | null {
+    return userAgent?.trim().slice(0, 500) || null;
+  }
+
+  private normalizeIpAddress(ipAddress?: string | null): string | null {
+    return ipAddress?.trim().slice(0, 64) || null;
   }
 }

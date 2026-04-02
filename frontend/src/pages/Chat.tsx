@@ -3,7 +3,12 @@ import Navbar from '../components/Navbar';
 import { Link, useLocation } from 'react-router-dom';
 import { Send, Image as ImageIcon, Smile, ChevronDown, MessageCircle } from 'lucide-react';
 import { chatApi } from '../api';
-import type { ChatMessage, ChatMessageWithSender, ChatSessionWithDetails } from '@campus-market/shared';
+import { getCurrentUser } from '../lib/auth';
+import type {
+  ChatMessage,
+  ChatMessageWithSender,
+  ChatSessionWithDetails,
+} from '@campus-market/shared';
 import { getUserAvatarUrl, getUserDisplayName } from '../lib/user-display';
 
 const EmojiPicker = React.lazy(() => import('@emoji-mart/react'));
@@ -42,9 +47,10 @@ const formatMessageTimeLabel = (isoStr: string | Date): string => {
   const date = new Date(isoStr);
   const now = new Date();
 
-  const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const startOfDay = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate());
   const diffDays = Math.floor(
-    (startOfDay(now).getTime() - startOfDay(date).getTime()) / (24 * 60 * 60 * 1000)
+    (startOfDay(now).getTime() - startOfDay(date).getTime()) / (24 * 60 * 60 * 1000),
   );
   const timeStr = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 
@@ -96,12 +102,16 @@ const Chat: React.FC = () => {
   const [showProduct, setShowProduct] = useState<boolean>(true);
 
   const currentUser = useMemo<CurrentUser | null>(() => {
-    try {
-      const rawUser = localStorage.getItem('user');
-      return rawUser ? (JSON.parse(rawUser) as CurrentUser) : null;
-    } catch {
+    const authUser = getCurrentUser();
+    if (!authUser) {
       return null;
     }
+
+    return {
+      id: authUser.id,
+      studentId: authUser.studentId,
+      avatarUrl: authUser.avatar || authUser.profile?.avatarUrl || null,
+    };
   }, []);
 
   const location = useLocation();
@@ -237,8 +247,8 @@ const Chat: React.FC = () => {
           prev.map((session) =>
             session.id === currentSessionId
               ? { ...session, lastMessage: res.data.content, lastTime: res.data.createdAt }
-              : session
-          )
+              : session,
+          ),
         );
       } else {
         alert(res.message || '发送消息失败');
@@ -253,7 +263,7 @@ const Chat: React.FC = () => {
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === currentSessionId) || null,
-    [sessions, currentSessionId]
+    [sessions, currentSessionId],
   );
 
   const myAvatarUrl = useMemo(() => {
@@ -310,8 +320,8 @@ const Chat: React.FC = () => {
           prev.map((session) =>
             session.id === currentSessionId
               ? { ...session, lastMessage: '[图片]', lastTime: sendRes.data.createdAt }
-              : session
-          )
+              : session,
+          ),
         );
       } else {
         alert(sendRes.message || '发送图片失败');
@@ -347,8 +357,8 @@ const Chat: React.FC = () => {
             prev.map((session) =>
               session.id === currentSessionId
                 ? { ...session, lastMessage: '你撤回了一条消息', lastTime: recalled.createdAt }
-                : session
-            )
+                : session,
+            ),
           );
         }
       } else {
@@ -376,9 +386,13 @@ const Chat: React.FC = () => {
             </div>
             <div className="flex-1 overflow-y-auto">
               {loadingSessions ? (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm">加载中...</div>
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                  加载中...
+                </div>
               ) : sessions.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm">暂无会话</div>
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                  暂无会话
+                </div>
               ) : (
                 sessions.map((session) => {
                   const isActive = session.id === currentSessionId;
@@ -388,7 +402,7 @@ const Chat: React.FC = () => {
                     session.partnerAvatar ||
                     getUserAvatarUrl(
                       session.buyer,
-                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(seed))}`
+                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(seed))}`,
                     ) ||
                     `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(seed))}`;
 
@@ -401,7 +415,11 @@ const Chat: React.FC = () => {
                       }`}
                     >
                       <div className="relative">
-                        <img src={avatar} alt={name} className="w-12 h-12 rounded-full bg-slate-100" />
+                        <img
+                          src={avatar}
+                          alt={name}
+                          className="w-12 h-12 rounded-full bg-slate-100"
+                        />
                         {(session.unreadCount || 0) > 0 && (
                           <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs flex items-center justify-center rounded-full border-2 border-white">
                             {session.unreadCount}
@@ -432,9 +450,13 @@ const Chat: React.FC = () => {
             <div className="bg-white border-b border-slate-100">
               {activeSession ? (
                 <div className="flex flex-col">
-                  <Link to={`/user/${activeSession.partnerId}`} className="flex items-center gap-3 p-4 group">
+                  <Link
+                    to={`/user/${activeSession.partnerId}`}
+                    className="flex items-center gap-3 p-4 group"
+                  >
                     {(() => {
-                      const headerSeed = activeSession.partnerId || activeSession.partnerName || 'user';
+                      const headerSeed =
+                        activeSession.partnerId || activeSession.partnerName || 'user';
                       const headerAvatar =
                         activeSession.partnerAvatar ||
                         `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(String(headerSeed))}`;
@@ -485,7 +507,9 @@ const Chat: React.FC = () => {
                               {activeSession.productTitle || '商品详情'}
                             </p>
                             {activeSession.productPrice != null && (
-                              <p className="mt-1 text-lg font-bold text-orange-500">¥{activeSession.productPrice}</p>
+                              <p className="mt-1 text-lg font-bold text-orange-500">
+                                ¥{activeSession.productPrice}
+                              </p>
                             )}
                           </div>
                         </Link>
@@ -503,11 +527,17 @@ const Chat: React.FC = () => {
               className="flex-1 min-h-[260px] overflow-y-auto p-4 space-y-4 no-scrollbar bg-neutral-50"
             >
               {loadingMessages ? (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm">加载消息中...</div>
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                  加载消息中...
+                </div>
               ) : !activeSession ? (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm">请选择左侧会话</div>
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                  请选择左侧会话
+                </div>
               ) : messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm">暂无消息，发送第一条吧。</div>
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                  暂无消息，发送第一条吧。
+                </div>
               ) : (
                 messages.map((msg, index) => {
                   const isMe = currentUser && String(msg.senderId) === String(currentUser.id);
@@ -528,7 +558,9 @@ const Chat: React.FC = () => {
                           </span>
                         </div>
                       ) : (
-                        <div className={`flex gap-2 ${isMe ? 'items-center justify-end' : 'items-end justify-start'}`}>
+                        <div
+                          className={`flex gap-2 ${isMe ? 'items-center justify-end' : 'items-end justify-start'}`}
+                        >
                           <div className="max-w-[70%] flex flex-col gap-1">
                             <div className="relative">
                               <div
@@ -565,7 +597,11 @@ const Chat: React.FC = () => {
                           </div>
                           {isMe && myAvatarUrl && (
                             <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex-shrink-0">
-                              <img src={myAvatarUrl} alt="" className="w-full h-full object-cover" />
+                              <img
+                                src={myAvatarUrl}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
                             </div>
                           )}
                         </div>
@@ -658,5 +694,3 @@ const Chat: React.FC = () => {
 };
 
 export default Chat;
-
-
