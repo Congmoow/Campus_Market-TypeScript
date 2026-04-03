@@ -16,6 +16,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:push": "prisma db push --schema prisma/schema.prisma",
+    "test:prepare-db": "npm run prisma:push -- --skip-generate",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
     "pretest": "npm run prepare:artifacts",
