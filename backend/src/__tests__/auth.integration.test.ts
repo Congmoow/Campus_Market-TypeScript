@@ -3,6 +3,12 @@ import app from '../app';
 import { prisma } from '../utils/prisma.util';
 import { hashPassword } from '../utils/password.util';
 
+const AUTH_TEST_PREFIX = 'authint';
+const AUTH_REGISTER_USER_01 = `${AUTH_TEST_PREFIX}01`;
+const AUTH_REGISTER_USER_02 = `${AUTH_TEST_PREFIX}02`;
+const AUTH_REGISTER_USER_03 = `${AUTH_TEST_PREFIX}03`;
+const AUTH_LOGIN_USER_10 = `${AUTH_TEST_PREFIX}10`;
+
 describe('Auth API Integration Tests', () => {
   // 娓呯悊娴嬭瘯鏁版嵁
   afterAll(async () => {
@@ -10,7 +16,7 @@ describe('Auth API Integration Tests', () => {
     await prisma.user.deleteMany({
       where: {
         studentId: {
-          startsWith: 'testuser',
+          startsWith: AUTH_TEST_PREFIX,
         },
       },
     });
@@ -22,7 +28,7 @@ describe('Auth API Integration Tests', () => {
       const response = await request(app)
         .post('/api/auth/register')
         .send({
-          studentId: 'testuser01',
+          studentId: AUTH_REGISTER_USER_01,
           password: 'password123',
           phone: '13800138001',
           name: 'Test User',
@@ -32,13 +38,13 @@ describe('Auth API Integration Tests', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveProperty('token');
       expect(response.body.data).toHaveProperty('user');
-      expect(response.body.data.user.studentId).toBe('testuser01');
+      expect(response.body.data.user.studentId).toBe(AUTH_REGISTER_USER_01);
     });
 
     it('should return error for duplicate studentId', async () => {
       // 鍏堟敞鍐屼竴涓敤鎴?
       await request(app).post('/api/auth/register').send({
-        studentId: 'testuser02',
+        studentId: AUTH_REGISTER_USER_02,
         password: 'password123',
         name: 'Test User 1',
       });
@@ -47,7 +53,7 @@ describe('Auth API Integration Tests', () => {
       const response = await request(app)
         .post('/api/auth/register')
         .send({
-          studentId: 'testuser02',
+          studentId: AUTH_REGISTER_USER_02,
           password: 'password456',
           name: 'Test User 2',
         })
@@ -61,7 +67,7 @@ describe('Auth API Integration Tests', () => {
       const response = await request(app)
         .post('/api/auth/register')
         .send({
-          studentId: 'testuser03',
+          studentId: AUTH_REGISTER_USER_03,
           password: '12345',
           name: 'Test User',
         })
@@ -91,7 +97,7 @@ describe('Auth API Integration Tests', () => {
       const hashedPassword = await hashPassword('password123');
       const user = await prisma.user.create({
         data: {
-          studentId: 'testuser10',
+          studentId: AUTH_LOGIN_USER_10,
           passwordHash: hashedPassword,
           phone: '13800138010',
           role: 'USER',
@@ -116,7 +122,7 @@ describe('Auth API Integration Tests', () => {
       const response = await request(app)
         .post('/api/auth/login')
         .send({
-          studentId: 'testuser10',
+          studentId: AUTH_LOGIN_USER_10,
           password: 'password123',
         })
         .expect(200);
@@ -124,7 +130,7 @@ describe('Auth API Integration Tests', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveProperty('token');
       expect(response.body.data).toHaveProperty('user');
-      expect(response.body.data.user.studentId).toBe('testuser10');
+      expect(response.body.data.user.studentId).toBe(AUTH_LOGIN_USER_10);
     });
 
     it('should return error for invalid studentId', async () => {
@@ -172,7 +178,7 @@ describe('Auth API Integration Tests', () => {
     beforeAll(async () => {
       // 鐧诲綍鑾峰彇 token
       const response = await request(app).post('/api/auth/login').send({
-        studentId: 'testuser10',
+        studentId: AUTH_LOGIN_USER_10,
         password: 'password123',
       });
       authToken = response.body.data.token;
@@ -186,7 +192,7 @@ describe('Auth API Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toHaveProperty('studentId');
-      expect(response.body.data.studentId).toBe('testuser10');
+      expect(response.body.data.studentId).toBe(AUTH_LOGIN_USER_10);
     });
 
     it('should return error without token', async () => {
@@ -221,7 +227,7 @@ describe('Auth API Integration Tests', () => {
     beforeAll(async () => {
       // 鐧诲綍鑾峰彇 token
       const response = await request(app).post('/api/auth/login').send({
-        studentId: 'testuser10',
+        studentId: AUTH_LOGIN_USER_10,
         password: 'password123',
       });
       authToken = response.body.data.token;
@@ -243,7 +249,7 @@ describe('Auth API Integration Tests', () => {
       const loginResponse = await request(app)
         .post('/api/auth/login')
         .send({
-          studentId: 'testuser10',
+          studentId: AUTH_LOGIN_USER_10,
           password: 'newpassword123',
         })
         .expect(200);
