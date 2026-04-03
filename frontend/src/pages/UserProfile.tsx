@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useCallback } from 'react';
 import { Calendar, MapPin, MessageCircle, ShieldCheck } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import AuthModal from '../components/AuthModal';
@@ -206,53 +207,56 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const loadProductsByStatus = async (status: ProductTab, activeProfile?: ProfileData | null) => {
-    if (!id) return;
+  const loadProductsByStatus = useCallback(
+    async (status: ProductTab, activeProfile?: ProfileData | null) => {
+      if (!id) return;
 
-    try {
-      setProductsLoading(true);
+      try {
+        setProductsLoading(true);
 
-      const productsRes = await userApi.getUserProducts(Number(id), status);
-      if (!productsRes.success) {
-        console.error(productsRes.message || '加载商品列表失败');
-        return;
-      }
+        const productsRes = await userApi.getUserProducts(Number(id), status);
+        if (!productsRes.success) {
+          console.error(productsRes.message || '加载商品列表失败');
+          return;
+        }
 
-      const sourceProfile = activeProfile ?? profile;
-      const list = productsRes.data || [];
-      const mapped: MappedProduct[] = list.map((product: ProductListItem) => ({
-        id: product.id,
-        title: product.title,
-        price: product.price,
-        description: product.description || '',
-        image:
-          product.images?.[0]?.url ||
-          'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800',
-        location: product.location || '校内',
-        timeAgo: formatTime(product.createdAt),
-        seller: {
-          name: getUserDisplayName(
-            product.seller,
-            sourceProfile?.name || sourceProfile?.studentId || '同学',
-          ),
-          avatar:
-            getUserAvatarUrl(
+        const sourceProfile = activeProfile;
+        const list = productsRes.data || [];
+        const mapped: MappedProduct[] = list.map((product: ProductListItem) => ({
+          id: product.id,
+          title: product.title,
+          price: product.price,
+          description: product.description || '',
+          image:
+            product.images?.[0]?.url ||
+            'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&q=80&w=800',
+          location: product.location || '校内',
+          timeAgo: formatTime(product.createdAt),
+          seller: {
+            name: getUserDisplayName(
               product.seller,
-              getUserAvatarUrl(sourceProfile) ||
-                `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,
-            ) || '',
-        },
-      }));
+              sourceProfile?.name || sourceProfile?.studentId || '同学',
+            ),
+            avatar:
+              getUserAvatarUrl(
+                product.seller,
+                getUserAvatarUrl(sourceProfile) ||
+                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${product.sellerId || product.id}`,
+              ) || '',
+          },
+        }));
 
-      setProducts(mapped);
-    } catch (caughtError) {
-      console.error('加载商品列表失败', caughtError);
-    } finally {
-      setProductsLoading(false);
-    }
-  };
+        setProducts(mapped);
+      } catch (caughtError) {
+        console.error('加载商品列表失败', caughtError);
+      } finally {
+        setProductsLoading(false);
+      }
+    },
+    [id],
+  );
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!id) return;
 
     const initialTab = getProductTabFromSearch(
@@ -281,21 +285,21 @@ const UserProfile: React.FC = () => {
     } finally {
       setProfileLoading(false);
     }
-  };
+  }, [currentUser, id, loadProductsByStatus]);
 
   const handleProductTabClick = (tab: ProductTab) => {
     if (tab === activeProductTab) return;
 
     setActiveProductTab(tab);
     syncProductTabToUrl(tab);
-    void loadProductsByStatus(tab);
+    void loadProductsByStatus(tab, profile);
   };
 
   useEffect(() => {
     if (id) {
       void loadData();
     }
-  }, [id]);
+  }, [id, loadData]);
 
   const handleEditSuccess = (updatedProfile: ProfileContainer) => {
     const nextProfile = {

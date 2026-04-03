@@ -61,7 +61,7 @@ async function refreshAccessTokenOnce(): Promise<string | null> {
 }
 
 async function retryRequest<T = unknown>(config: HttpRequestConfig): Promise<T> {
-  return instance.request<unknown, T>(config);
+  return instance.request<T>(config).then((response) => response.data);
 }
 
 instance.interceptors.request.use(
@@ -132,19 +132,19 @@ const request = {
     return retryRequest<T>(config);
   },
   get<T>(url: string, config?: HttpRequestConfig): Promise<T> {
-    return instance.get<unknown, T>(url, config);
+    return instance.get<T>(url, config).then((response) => response.data);
   },
   post<T>(url: string, data?: unknown, config?: HttpRequestConfig): Promise<T> {
-    return instance.post<unknown, T>(url, data, config);
+    return instance.post<T>(url, data, config).then((response) => response.data);
   },
   put<T>(url: string, data?: unknown, config?: HttpRequestConfig): Promise<T> {
-    return instance.put<unknown, T>(url, data, config);
+    return instance.put<T>(url, data, config).then((response) => response.data);
   },
   patch<T>(url: string, data?: unknown, config?: HttpRequestConfig): Promise<T> {
-    return instance.patch<unknown, T>(url, data, config);
+    return instance.patch<T>(url, data, config).then((response) => response.data);
   },
   delete<T>(url: string, config?: HttpRequestConfig): Promise<T> {
-    return instance.delete<unknown, T>(url, config);
+    return instance.delete<T>(url, config).then((response) => response.data);
   },
 };
 

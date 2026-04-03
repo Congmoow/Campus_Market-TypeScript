@@ -143,4 +143,56 @@ describe('http client auth handling', () => {
 
     expect(requestSpy).toHaveBeenCalledTimes(2);
   });
+
+  it('returns the response payload instead of the raw AxiosResponse object', async () => {
+    const payload = {
+      success: true,
+      data: {
+        content: [],
+        totalElements: 0,
+        totalPages: 0,
+        size: 20,
+        number: 0,
+      },
+    };
+
+    vi.doMock('axios', () => {
+      const createInterceptors = () => ({
+        handlers: [] as Array<{ fulfilled: unknown; rejected: unknown }>,
+        use(fulfilled: unknown, rejected: unknown) {
+          this.handlers.push({ fulfilled, rejected });
+        },
+      });
+
+      const get = vi.fn().mockResolvedValue({
+        data: payload,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {},
+      });
+
+      return {
+        default: {
+          create: vi.fn(() => ({
+            interceptors: {
+              request: createInterceptors(),
+              response: createInterceptors(),
+            },
+            request: vi.fn(),
+            get,
+            post: vi.fn(),
+            put: vi.fn(),
+            patch: vi.fn(),
+            delete: vi.fn(),
+          })),
+        },
+        isAxiosError: vi.fn(() => false),
+      };
+    });
+
+    const { default: request } = await import('../http');
+
+    await expect(request.get('/products', { params: { page: 0 } })).resolves.toEqual(payload);
+  });
 });
