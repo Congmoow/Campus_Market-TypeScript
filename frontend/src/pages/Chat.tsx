@@ -1,4 +1,5 @@
 ﻿import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import Navbar from '../components/Navbar';
 import { Link, useLocation } from 'react-router-dom';
 import { Send, Image as ImageIcon, Smile, ChevronDown, MessageCircle } from 'lucide-react';
@@ -151,7 +152,7 @@ const Chat: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [messages, hasInitialScroll]);
 
-  const loadMessages = async (sessionId: number) => {
+  const loadMessages = useCallback(async (sessionId: number) => {
     setLoadingMessages(true);
     try {
       const res = await chatApi.getMessages(sessionId);
@@ -166,41 +167,44 @@ const Chat: React.FC = () => {
     } finally {
       setLoadingMessages(false);
     }
-  };
+  }, []);
 
-  const loadSessions = async (preferredSessionId: number | null) => {
-    setLoadingSessions(true);
-    try {
-      const res = await chatApi.getList();
-      if (res.success) {
-        const list = (res.data || []) as SessionDisplay[];
-        setSessions(list);
-        if (list.length > 0) {
-          let target = list[0];
-          if (preferredSessionId) {
-            const matched = list.find((session) => session.id === preferredSessionId);
-            if (matched) {
-              target = matched;
+  const loadSessions = useCallback(
+    async (preferredSessionId: number | null) => {
+      setLoadingSessions(true);
+      try {
+        const res = await chatApi.getList();
+        if (res.success) {
+          const list = (res.data || []) as SessionDisplay[];
+          setSessions(list);
+          if (list.length > 0) {
+            let target = list[0];
+            if (preferredSessionId) {
+              const matched = list.find((session) => session.id === preferredSessionId);
+              if (matched) {
+                target = matched;
+              }
             }
+            setCurrentSessionId(target.id);
+            setHasInitialScroll(false);
+            await loadMessages(target.id);
           }
-          setCurrentSessionId(target.id);
-          setHasInitialScroll(false);
-          await loadMessages(target.id);
+        } else {
+          alert(res.message || '加载会话列表失败');
         }
-      } else {
-        alert(res.message || '加载会话列表失败');
+      } catch (caughtError) {
+        console.error('加载会话列表失败', caughtError);
+        alert('加载会话列表失败，请稍后重试');
+      } finally {
+        setLoadingSessions(false);
       }
-    } catch (caughtError) {
-      console.error('加载会话列表失败', caughtError);
-      alert('加载会话列表失败，请稍后重试');
-    } finally {
-      setLoadingSessions(false);
-    }
-  };
+    },
+    [loadMessages],
+  );
 
   useEffect(() => {
     void loadSessions(initialSessionId);
-  }, [initialSessionId]);
+  }, [initialSessionId, loadSessions]);
 
   useEffect(() => {
     if (!showEmojiPicker || emojiData) return;
