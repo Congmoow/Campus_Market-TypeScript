@@ -17,21 +17,9 @@ import {
   User,
 } from '@campus-market/shared';
 import { prisma } from '../utils/prisma.util';
-import {
-  mapCategory,
-  mapProductBase,
-  mapProductImage,
-  mapUser,
-} from '../mappers/shared.mapper';
-import {
-  BusinessException,
-  ForbiddenException,
-  NotFoundException,
-} from '../utils/error.util';
-import {
-  DEFAULT_PRODUCT_CATEGORY_NAMES,
-  sortCategoryEntitiesByDefaultOrder,
-} from '../constants/product-categories';
+import { mapCategory, mapProductBase, mapProductImage, mapUser } from '../mappers/shared.mapper';
+import { BusinessException, ForbiddenException, NotFoundException } from '../utils/error.util';
+import { sortCategoryEntitiesByDefaultOrder } from '../constants/product-categories';
 
 type ProductRecord = PrismaProduct & {
   images: PrismaProductImage[];
@@ -45,7 +33,7 @@ type SellerLookup = {
 
 export class ProductService {
   private async resolveCategoryId(
-    data: Pick<CreateProductRequest | UpdateProductRequest, 'categoryId' | 'categoryName'>
+    data: Pick<CreateProductRequest | UpdateProductRequest, 'categoryId' | 'categoryName'>,
   ): Promise<bigint | null | undefined> {
     if (data.categoryId !== undefined && data.categoryId !== null) {
       const category = await prisma.category.findUnique({
@@ -76,19 +64,7 @@ export class ProductService {
       return existingCategory.id;
     }
 
-    if (
-      !DEFAULT_PRODUCT_CATEGORY_NAMES.includes(
-        normalizedCategoryName as (typeof DEFAULT_PRODUCT_CATEGORY_NAMES)[number]
-      )
-    ) {
-      throw new BusinessException('分类不存在');
-    }
-
-    const createdCategory = await prisma.category.create({
-      data: { name: normalizedCategoryName },
-    });
-
-    return createdCategory.id;
+    throw new BusinessException('分类不存在');
   }
 
   private async loadSellerLookup(products: ProductRecord[]): Promise<SellerLookup> {
@@ -150,7 +126,7 @@ export class ProductService {
   private async convertProduct(
     product: ProductRecord,
     includeCategory = false,
-    preloaded?: SellerLookup
+    preloaded?: SellerLookup,
   ): Promise<ProductListItem | ProductWithDetails> {
     let lookup = preloaded;
     if (!lookup) {
@@ -165,9 +141,7 @@ export class ProductService {
 
       lookup = {
         sellers: new Map(seller ? [[seller.id.toString(), seller]] : []),
-        profiles: new Map(
-          sellerProfile ? [[sellerProfile.userId.toString(), sellerProfile]] : []
-        ),
+        profiles: new Map(sellerProfile ? [[sellerProfile.userId.toString(), sellerProfile]] : []),
       };
     }
 
@@ -256,7 +230,7 @@ export class ProductService {
 
     const lookup = await this.loadSellerLookup(products);
     const content = await Promise.all(
-      products.map((product) => this.convertProduct(product, false, lookup))
+      products.map((product) => this.convertProduct(product, false, lookup)),
     );
 
     return {
@@ -283,10 +257,7 @@ export class ProductService {
     return this.convertProduct(product, true) as Promise<ProductWithDetails>;
   }
 
-  async createProduct(
-    userId: number,
-    data: CreateProductRequest
-  ): Promise<ProductWithDetails> {
+  async createProduct(userId: number, data: CreateProductRequest): Promise<ProductWithDetails> {
     if (data.price <= 0) {
       throw new BusinessException('价格必须大于0');
     }
@@ -331,7 +302,7 @@ export class ProductService {
   async updateProduct(
     userId: number,
     productId: number,
-    data: UpdateProductRequest
+    data: UpdateProductRequest,
   ): Promise<ProductWithDetails> {
     const product = await prisma.product.findUnique({
       where: { id: BigInt(productId) },
@@ -409,7 +380,7 @@ export class ProductService {
   async updateProductStatus(
     userId: number,
     productId: number,
-    data: UpdateProductStatusRequest
+    data: UpdateProductStatusRequest,
   ): Promise<ProductWithDetails> {
     const product = await prisma.product.findUnique({
       where: { id: BigInt(productId) },
@@ -443,22 +414,7 @@ export class ProductService {
       orderBy: { id: 'asc' },
     });
 
-    const existingCategoryNames = new Set(categories.map((category) => category.name));
-    const missingDefaultCategories = DEFAULT_PRODUCT_CATEGORY_NAMES.filter(
-      (name) => !existingCategoryNames.has(name)
-    );
-
-    const createdCategories = await Promise.all(
-      missingDefaultCategories.map((name) =>
-        prisma.category.create({
-          data: { name },
-        })
-      )
-    );
-
-    return sortCategoryEntitiesByDefaultOrder([...categories, ...createdCategories]).map(
-      mapCategory
-    );
+    return sortCategoryEntitiesByDefaultOrder(categories).map(mapCategory);
   }
 
   async getUserProducts(userId: number): Promise<ProductListItem[]> {

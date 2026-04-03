@@ -1,6 +1,7 @@
 ﻿import { ProductService } from '../product.service';
 import { prisma } from '../../utils/prisma.util';
 import { BusinessException, NotFoundException, ForbiddenException } from '../../utils/error.util';
+import { DEFAULT_PRODUCT_CATEGORY_NAMES } from '../../constants/product-categories';
 
 // Mock Prisma
 jest.mock('../../utils/prisma.util', () => ({
@@ -343,6 +344,78 @@ describe('ProductService', () => {
       await expect(productService.createProduct(1, productData)).rejects.toThrow(BusinessException);
       await expect(productService.createProduct(1, productData)).rejects.toThrow('分类不存在');
     });
+
+    it('should create product with an existing categoryName', async () => {
+      const productData = {
+        title: 'New Product',
+        description: 'Description',
+        price: 100,
+        categoryName: DEFAULT_PRODUCT_CATEGORY_NAMES[0],
+        location: 'Location',
+        images: ['image1.jpg'],
+      };
+
+      const mockCategory = {
+        id: BigInt(1),
+        name: DEFAULT_PRODUCT_CATEGORY_NAMES[0],
+      };
+
+      const mockProduct = {
+        id: BigInt(1),
+        ...productData,
+        price: 100,
+        sellerId: BigInt(1),
+        categoryId: BigInt(1),
+        status: 'ON_SALE',
+        viewCount: BigInt(0),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        images: [{ id: BigInt(1), productId: BigInt(1), url: 'image1.jpg' }],
+      };
+
+      const mockUser = {
+        id: BigInt(1),
+        studentId: '20240001',
+        phone: '13800138000',
+        role: 'USER',
+      };
+
+      (prisma.category.findFirst as jest.Mock).mockResolvedValue(mockCategory);
+      (prisma.product.create as jest.Mock).mockResolvedValue(mockProduct);
+      (prisma.product.findUnique as jest.Mock).mockResolvedValue(mockProduct);
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+      (prisma.userProfile.findFirst as jest.Mock).mockResolvedValue(null);
+
+      const result = await productService.createProduct(1, productData);
+
+      expect(result.title).toBe('New Product');
+      expect(prisma.category.create).not.toHaveBeenCalled();
+      expect(prisma.product.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            categoryId: BigInt(1),
+          }),
+        }),
+      );
+    });
+
+    it('should reject categoryName when the category does not exist', async () => {
+      const productData = {
+        title: 'New Product',
+        description: 'Description',
+        price: 100,
+        categoryName: DEFAULT_PRODUCT_CATEGORY_NAMES[0],
+        location: 'Location',
+        images: [],
+      };
+
+      (prisma.category.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(productService.createProduct(1, productData)).rejects.toThrow(BusinessException);
+      await expect(productService.createProduct(1, productData)).rejects.toThrow('分类不存在');
+      expect(prisma.category.create).not.toHaveBeenCalled();
+      expect(prisma.product.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateProduct', () => {
@@ -447,6 +520,33 @@ describe('ProductService', () => {
       });
     });
 
+    it('should reject categoryName when updating to a missing category', async () => {
+      const mockProduct = {
+        id: BigInt(1),
+        title: 'Product',
+        description: 'Old description',
+        price: 100,
+        sellerId: BigInt(1),
+        status: 'ON_SALE',
+        viewCount: BigInt(0),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        images: [],
+      };
+
+      (prisma.product.findUnique as jest.Mock).mockResolvedValue(mockProduct);
+      (prisma.category.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        productService.updateProduct(1, 1, {
+          categoryName: DEFAULT_PRODUCT_CATEGORY_NAMES[0],
+        } as any),
+      ).rejects.toThrow('分类不存在');
+
+      expect(prisma.category.create).not.toHaveBeenCalled();
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    });
+
     it('should allow clearing originalPrice with null while keeping the current price', async () => {
       const mockProduct = {
         id: BigInt(1),
@@ -534,34 +634,23 @@ describe('ProductService', () => {
   });
 
   describe('getCategoryList', () => {
-    it('should return the full default category list and append custom categories', async () => {
+    it('should sort categories without creating missing defaults at runtime', async () => {
       const mockCategories = [
-        { id: BigInt(1), name: '数码产品' },
+        { id: BigInt(3), name: DEFAULT_PRODUCT_CATEGORY_NAMES[2] },
         { id: BigInt(9), name: '乐器' },
+        { id: BigInt(1), name: DEFAULT_PRODUCT_CATEGORY_NAMES[0] },
       ];
 
       (prisma.category.findMany as jest.Mock).mockResolvedValue(mockCategories);
-      (prisma.category.create as jest.Mock)
-        .mockResolvedValueOnce({ id: BigInt(2), name: '书籍教材' })
-        .mockResolvedValueOnce({ id: BigInt(3), name: '生活用品' })
-        .mockResolvedValueOnce({ id: BigInt(4), name: '衣物鞋帽' })
-        .mockResolvedValueOnce({ id: BigInt(5), name: '美妆护肤' })
-        .mockResolvedValueOnce({ id: BigInt(6), name: '运动器材' })
-        .mockResolvedValueOnce({ id: BigInt(7), name: '其他' });
 
       const result = await productService.getCategoryList();
 
       expect(result.map((category) => category.name)).toEqual([
-        '数码产品',
-        '书籍教材',
-        '生活用品',
-        '衣物鞋帽',
-        '美妆护肤',
-        '运动器材',
-        '其他',
+        DEFAULT_PRODUCT_CATEGORY_NAMES[0],
+        DEFAULT_PRODUCT_CATEGORY_NAMES[2],
         '乐器',
       ]);
-      expect(prisma.category.create).toHaveBeenCalledTimes(6);
+      expect(prisma.category.create).not.toHaveBeenCalled();
     });
   });
 });
