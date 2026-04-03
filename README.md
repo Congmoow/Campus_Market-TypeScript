@@ -92,6 +92,127 @@ npm test
 npm run build
 ```
 
+## Docker 部署
+
+本仓库已补充一套面向本地一键启动和生产部署参考的 Docker 方案，新增文件如下：
+
+- 根目录：`docker-compose.yml`、`.dockerignore`、`.env.docker.example`
+- 后端：`backend/Dockerfile`、`backend/docker-entrypoint.sh`
+- 前端：`frontend/Dockerfile`、`frontend/nginx/default.conf`
+
+方案说明：
+
+- `postgres`
+  - 使用官方 `postgres:16-alpine`
+  - 带健康检查
+  - 使用命名卷持久化数据库数据
+- `backend`
+  - 使用多阶段构建
+  - 兼容 npm workspaces monorepo
+  - 构建时先编译 `packages/shared`，再生成 Prisma Client，最后编译 backend
+  - 容器启动前自动执行 `prisma migrate deploy`
+  - `uploads` 使用独立命名卷，避免镜像重建后丢失上传文件
+- `frontend`
+  - 使用多阶段构建
+  - 生产环境输出为静态资源，由 nginx 提供服务
+  - nginx 统一将 `/api` 和 `/uploads` 反向代理到 backend
+  - 对外暴露端口为 `80`，不再在 Docker 生产方案中直接运行 Vite dev server
+
+### 首次启动
+
+1. 复制 Docker 环境变量模板到根目录 `.env`
+
+```powershell
+Copy-Item .env.docker.example .env
+```
+
+2. 按实际环境修改 `.env`，至少确认以下变量：
+
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `FRONTEND_URL`
+- `VITE_API_URL`
+
+说明：
+
+- 本方案默认推荐 `VITE_API_URL=/api`
+- 生产环境必须替换示例中的数据库密码和 `JWT_SECRET`
+- `DATABASE_URL` 中的数据库主机在 compose 网络内应保持为 `postgres`
+
+3. 构建并启动所有服务
+
+```bash
+docker compose up --build -d
+```
+
+### 查看日志
+
+```bash
+docker compose logs -f
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f postgres
+```
+
+### 停止服务
+
+```bash
+docker compose down
+```
+
+如果还需要连同数据库卷一起删除：
+
+```bash
+docker compose down -v
+```
+
+### 数据库迁移
+
+后端容器启动时会自动执行一次：
+
+```bash
+prisma migrate deploy
+```
+
+如果你需要手动再次执行迁移：
+
+```bash
+docker compose exec backend npm exec --workspace campus-market-backend prisma migrate deploy --schema backend/prisma/schema.prisma
+```
+
+### 访问地址
+
+- 前端：`http://localhost`
+- 后端：`http://localhost:3000`
+- 后端健康检查：`http://localhost:3000/health`
+- PostgreSQL：`localhost:5432`
+
+### 生产环境注意事项
+
+- 必须替换 `.env` 中所有示例密码和密钥，尤其是 `POSTGRES_PASSWORD` 与 `JWT_SECRET`
+- `FRONTEND_URL` 需要改成你的真实站点域名，例如 `https://market.example.com`
+- 如无明确需要，不建议在公网直接暴露 `5432`
+- 上传文件当前落在 backend 容器挂载卷中；生产环境建议将该卷映射到宿主机目录、云盘或对象存储
+- 如果前端部署在域名或反向代理之后，优先保持 `VITE_API_URL=/api`，继续使用同源反向代理
+- 如需 TLS，请在 nginx 外层再接入云负载均衡或上层反向代理
+
+### 常见问题
+
+- 端口冲突
+  - 如果本机已经占用 `80`、`3000` 或 `5432`，请先释放端口，或修改 `docker-compose.yml` 的宿主机端口映射
+- Prisma 连接失败
+  - 确认 `.env` 中 `DATABASE_URL` 的主机名是 `postgres`，不要写成 `localhost`
+  - 使用 `docker compose logs -f postgres` 和 `docker compose logs -f backend` 检查数据库是否已健康
+- 前端 API 地址配置错误
+  - Docker 生产方案默认通过 nginx 代理 `/api`，推荐保持 `VITE_API_URL=/api`
+  - 如果你改成外部 API 地址，需要在前端重新构建镜像后再启动
+- 上传文件丢失
+  - 请确认没有执行 `docker compose down -v`
+  - 生产环境建议将上传卷映射到明确的持久化存储位置
+
 说明：
 
 - `npm run lint`

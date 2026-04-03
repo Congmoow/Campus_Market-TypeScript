@@ -303,5 +303,6 @@ docs/.vitepress/cache/
 # Force include important files
 !.gitkeep
 !.env.example
+!.dockerignore
 !backend/.env.example
 !frontend/.env.example

@@ -29,7 +29,7 @@ let httpClientAuthBridge: HttpClientAuthBridge = {
 type InternalHttpRequestConfig = InternalAxiosRequestConfig & HttpRequestConfig;
 
 const instance = axios.create({
-  baseURL: '/api',
+  baseURL: (import.meta.env.VITE_API_URL?.trim() || '/api').replace(/\/+$/, ''),
   timeout: 10000,
   withCredentials: true,
   headers: {
