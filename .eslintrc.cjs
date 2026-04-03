@@ -25,6 +25,18 @@ module.exports = {
       },
     },
     {
+      files: ['backend/scripts/**/*.js'],
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'script',
+      },
+      env: {
+        node: true,
+        es2021: true,
+      },
+      extends: ['eslint:recommended'],
+    },
+    {
       files: ['backend/src/**/*.test.ts', 'backend/src/**/__tests__/**/*.ts'],
       rules: {
         '@typescript-eslint/no-var-requires': 'off',

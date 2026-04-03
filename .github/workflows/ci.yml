@@ -48,7 +48,7 @@ jobs:
         run: npm run typecheck
 
       - name: Prepare backend test database
-        run: npm --workspace campus-market-backend run prisma:push
+        run: npm --workspace campus-market-backend run test:prepare-db
 
       - name: Run tests
         run: npm test
