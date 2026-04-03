@@ -12,7 +12,7 @@ import openRafiki from '../assets/open-rafiki.svg';
 import { sortCategoriesByPublishOrder } from '../lib/product-categories';
 
 const SORT_OPTIONS = ['最新发布', '价格最低', '价格最高', '浏览最多'] as const;
-type SortOption = typeof SORT_OPTIONS[number];
+type SortOption = (typeof SORT_OPTIONS)[number];
 
 interface CardProduct {
   id: number;
@@ -112,7 +112,7 @@ const Marketplace: React.FC = () => {
   const loadProducts = async (
     categoryId: number | null,
     sortLabel: SortOption,
-    currentPriceRange: [number, number]
+    currentPriceRange: [number, number],
   ) => {
     try {
       setLoading(true);
@@ -182,8 +182,9 @@ const Marketplace: React.FC = () => {
   }, [selectedCategoryId, sortBy, minPrice, maxPrice]);
 
   const visibleProducts = products.filter((product) => product.status === 'ON_SALE');
+  const hasUpperPriceBound = maxPrice < DEFAULT_PRICE_RANGE[1];
   const filteredProducts = visibleProducts.filter(
-    (product) => product.price >= minPrice && product.price <= maxPrice
+    (product) => product.price >= minPrice && (!hasUpperPriceBound || product.price <= maxPrice),
   );
 
   const emptyStateText =

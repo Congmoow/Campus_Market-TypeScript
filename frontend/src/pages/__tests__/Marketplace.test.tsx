@@ -51,6 +51,9 @@ vi.mock('rc-slider', () => ({
         <button type="button" onClick={() => onChange([800, 900])}>
           设置价格区间800-900
         </button>
+        <button type="button" onClick={() => onChange([1000, 1000])}>
+          设置价格区间1000以上
+        </button>
       </div>
     );
   },
@@ -117,6 +120,23 @@ const mockProducts = [
       },
     },
   },
+  {
+    id: 4,
+    title: '1k+商品',
+    description: 'D',
+    price: 1500,
+    status: 'ON_SALE',
+    sellerId: 4,
+    viewCount: 0,
+    createdAt: '2026-04-01T08:00:00.000Z',
+    updatedAt: '2026-04-01T08:00:00.000Z',
+    images: [],
+    seller: {
+      profile: {
+        nickname: '卖家D',
+      },
+    },
+  },
 ];
 
 describe('Marketplace', () => {
@@ -174,7 +194,7 @@ describe('Marketplace', () => {
         expect.objectContaining({
           minPrice: 100,
           maxPrice: 500,
-        })
+        }),
       );
     });
   });
@@ -193,6 +213,36 @@ describe('Marketplace', () => {
       expect(screen.queryByText('中价商品')).not.toBeInTheDocument();
       expect(screen.queryByText('高价商品')).not.toBeInTheDocument();
       expect(screen.getByText(/没有符合当前价格区间的商品/)).toBeInTheDocument();
+    });
+  });
+
+  it('keeps products above 1000 visible when the slider is set to the 1k+ range', async () => {
+    const user = userEvent.setup();
+
+    render(<Marketplace />);
+
+    expect(await screen.findByText('1k+商品')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '设置价格区间1000以上' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('低价商品')).not.toBeInTheDocument();
+      expect(screen.queryByText('中价商品')).not.toBeInTheDocument();
+      expect(screen.queryByText('高价商品')).not.toBeInTheDocument();
+      expect(screen.getByText('1k+商品')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(apiMocks.productApi.getList).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          minPrice: 1000,
+        }),
+      );
+      expect(apiMocks.productApi.getList).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({
+          maxPrice: expect.any(Number),
+        }),
+      );
     });
   });
 
@@ -220,7 +270,7 @@ describe('Marketplace', () => {
       .getAllByRole('button')
       .map((button) => button.textContent?.trim())
       .filter((label): label is string =>
-        publishCategoryOrder.includes(label as (typeof publishCategoryOrder)[number])
+        publishCategoryOrder.includes(label as (typeof publishCategoryOrder)[number]),
       );
 
     expect(categoryBar.className).toContain('flex-1');
