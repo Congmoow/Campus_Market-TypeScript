@@ -32,6 +32,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       FRONTEND_URL: ${FRONTEND_URL}
       UPLOAD_DIR: ${UPLOAD_DIR:-uploads}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-lax}
+      PRISMA_ALLOW_DB_PUSH_FALLBACK: ${PRISMA_ALLOW_DB_PUSH_FALLBACK:-true}
     healthcheck:
       test:
         [

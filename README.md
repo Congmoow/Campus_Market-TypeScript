@@ -177,11 +177,32 @@ docker compose down -v
 prisma migrate deploy
 ```
 
+如果当前仓库的历史迁移无法在全新空库上完整重放，容器会在 `migrate deploy` 失败后自动回退到：
+
+```bash
+prisma db push --skip-generate
+```
+
+这样可以保证本地 Docker 首次启动可用；生产环境如果你需要严格迁移历史，建议后续补齐正式的初始化 migration 链。
+
 如果你需要手动再次执行迁移：
 
 ```bash
 docker compose exec backend npm exec --workspace campus-market-backend prisma migrate deploy --schema backend/prisma/schema.prisma
 ```
+
+### Docker Initialization Notes
+
+- Empty Docker PostgreSQL databases are now bootstrapped with `backend/prisma/bootstrap-current-schema.sql`.
+- After that bootstrap, backend marks the current legacy Prisma migration set as applied, then runs `prisma migrate deploy` again.
+- Default product categories are seeded automatically during backend startup, and the seed is idempotent.
+- The emergency fallback `prisma db push --skip-generate` is still available, but only as a last resort and is controlled by `PRISMA_ALLOW_DB_PUSH_FALLBACK`.
+- Local Docker over plain HTTP should keep `AUTH_COOKIE_SECURE=false`; production HTTPS should change it back to `true`.
+
+Current boundaries:
+
+- The historical Prisma migration directories are still not a complete from-empty replay chain by themselves, so empty-database startup relies on the baseline bootstrap file plus migration metadata normalization.
+- If you change the Prisma schema in the future, update both `backend/prisma/bootstrap-current-schema.sql` and the legacy migration handling in `backend/src/scripts/docker-db-init.ts`.
 
 ### 访问地址
 
