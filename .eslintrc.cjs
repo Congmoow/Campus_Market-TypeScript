@@ -25,6 +25,18 @@ module.exports = {
       },
     },
     {
+      files: ['backend/jest.config.js'],
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'script',
+      },
+      env: {
+        node: true,
+        es2021: true,
+      },
+      extends: ['eslint:recommended'],
+    },
+    {
       files: ['backend/scripts/**/*.js'],
       parserOptions: {
         ecmaVersion: 'latest',

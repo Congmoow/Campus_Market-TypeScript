@@ -1,0 +1,29 @@
+name: docker-regression
+displayName: 'Docker 回归'
+triggers:
+  push:
+    - matchType: PRECISE
+      branch: main
+    - matchType: PRECISE
+      branch: master
+commitMessage: ''
+stages:
+  - stage:
+      name: docker-regression-stage
+      displayName: 'Docker 回归'
+      failFast: false
+      steps:
+        - step: npmbuild@1
+          name: docker-regression-step
+          displayName: '执行 Docker 验收'
+          inputs:
+            nodeVersion: 14.15
+            goals: |
+              chmod +x scripts/ci/setup-node20.sh scripts/ci/run-code-tests.sh scripts/ci/run-docker-acceptance.sh
+              bash ./scripts/ci/run-code-tests.sh
+              bash ./scripts/ci/run-docker-acceptance.sh
+            uploadArtifact: true
+            uploadArtifactOptions:
+              artifactPath: './reports'
+              artifactRepository: 'campus-market-test-reports'
+              artifactName: 'docker-regression-reports'
