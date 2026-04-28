@@ -92,6 +92,11 @@ htmlcov/
 # Test results
 test-results/
 junit.xml
+reports/
+reports/backend/
+reports/frontend/
+backend/reports/
+frontend/reports/
 
 # ==========================================
 # IDE & Editors
@@ -242,6 +247,7 @@ nul
 .kiro/
 .npm-cache/
 .husky/_/
+.ci-tools/
 
 # Archive files
 *.zip
@@ -282,6 +288,8 @@ docker-compose.override.yml
 # CI/CD
 # ==========================================
 .github/workflows/*.local.yml
+!.workflow/
+!.workflow/**
 
 # ==========================================
 # Project Specific

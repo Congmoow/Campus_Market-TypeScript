@@ -8,50 +8,71 @@ on:
   pull_request:
 
 jobs:
-  quality:
+  code-level-tests:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: campus_market
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d campus_market"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
-      DATABASE_URL: postgresql://postgres:password@localhost:5432/campus_market?schema=public
+      CI: true
       JWT_SECRET: codex-ci-jwt-secret
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Make CI scripts executable
+        run: chmod +x scripts/ci/setup-node20.sh scripts/ci/run-code-tests.sh
 
-      - name: Run lint
-        run: npm run lint
+      - name: Run code-level tests
+        run: bash scripts/ci/run-code-tests.sh
 
-      - name: Run typecheck
-        run: npm run typecheck
+      - name: Upload code-level test artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: code-level-test-artifacts
+          if-no-files-found: warn
+          path: |
+            reports/code-level-tests-summary.txt
+            reports/backend
+            reports/frontend
 
-      - name: Prepare backend test database
-        run: npm --workspace campus-market-backend run test:prepare-db
+  customer-regression:
+    needs: code-level-tests
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      JWT_SECRET: codex-ci-jwt-secret
+      DOCKER_ACCEPTANCE_FRONTEND_URL: http://localhost
+      DOCKER_ACCEPTANCE_BACKEND_URL: http://localhost:3000
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-      - name: Run tests
-        run: npm test
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
 
-      - name: Run build
-        run: npm run build
+      - name: Make CI scripts executable
+        run: chmod +x scripts/ci/setup-node20.sh scripts/ci/run-docker-acceptance.sh
+
+      - name: Run customer regression
+        run: bash scripts/ci/run-docker-acceptance.sh
+
+      - name: Upload customer regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: customer-regression-artifacts
+          if-no-files-found: warn
+          path: |
+            reports/acceptance
+            reports/docker
+            reports/acceptance-report.json
+            reports/acceptance-summary.md
+            reports/docker-compose.log
