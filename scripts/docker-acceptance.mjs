@@ -81,6 +81,22 @@ async function requestJson(url, options = {}) {
   return { response, text, json };
 }
 
+function assertErrorResponse(result, expectedStatus, expectedMessageFragment, context) {
+  assert(
+    result.response.status === expectedStatus,
+    `${context} expected ${expectedStatus}, got ${result.response.status}: ${result.text}`,
+  );
+  assert(result.json?.success === false, `${context} should return success=false`);
+  assert(result.json?.statusCode === expectedStatus, `${context} should return statusCode`);
+
+  if (expectedMessageFragment) {
+    assert(
+      String(result.json?.message || '').includes(expectedMessageFragment),
+      `${context} message should include ${expectedMessageFragment}`,
+    );
+  }
+}
+
 function authHeaders(token, extraHeaders = {}) {
   return {
     Authorization: `Bearer ${token}`,
@@ -343,6 +359,70 @@ async function main() {
     };
   });
 
+  logStep('run negative regression cases for auth and query validation');
+  await runCheck('negative regression: unknown login rejected', async () => {
+    const invalidLogin = await requestJson(`${frontendBaseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        studentId: '20999999',
+        password: 'WrongPassw0rd!',
+      }),
+    });
+
+    assertErrorResponse(invalidLogin, 401, '学号或密码错误', 'unknown login');
+    return {
+      detail: `HTTP ${invalidLogin.response.status}`,
+    };
+  });
+
+  await runCheck('negative regression: invalid register phone rejected', async () => {
+    const invalidRegister = await requestJson(`${frontendBaseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        studentId: '20269999',
+        password: 'Passw0rd!',
+        phone: '12000000000',
+        name: 'Invalid Phone',
+      }),
+    });
+
+    assertErrorResponse(invalidRegister, 400, '手机号格式不正确', 'invalid register phone');
+    return {
+      detail: `HTTP ${invalidRegister.response.status}`,
+    };
+  });
+
+  await runCheck('negative regression: refresh without cookie rejected', async () => {
+    const refreshWithoutCookie = await requestJson(`${frontendBaseUrl}/api/auth/refresh`, {
+      method: 'POST',
+    });
+
+    assertErrorResponse(
+      refreshWithoutCookie,
+      401,
+      '未提供 refresh token',
+      'refresh without cookie',
+    );
+    return {
+      detail: `HTTP ${refreshWithoutCookie.response.status}`,
+    };
+  });
+
+  await runCheck('negative regression: invalid product page query rejected', async () => {
+    const invalidProductPage = await requestJson(`${frontendBaseUrl}/api/products?page=-1&size=20`);
+
+    assertErrorResponse(invalidProductPage, 400, 'page 必须大于等于 0', 'invalid product page');
+    return {
+      detail: `HTTP ${invalidProductPage.response.status}`,
+    };
+  });
+
   logStep('register seller and buyer, then verify login and refresh cookie');
   const seller = await runCheck('register seller', async () => {
     const registeredSeller = await registerUser('2026', 'Docker Seller');
@@ -543,6 +623,15 @@ async function main() {
     };
   });
 
+  await runCheck('negative regression: missing product detail returns 404', async () => {
+    const missingProduct = await requestJson(`${frontendBaseUrl}/api/products/999999999`);
+
+    assertErrorResponse(missingProduct, 404, '商品不存在', 'missing product detail');
+    return {
+      detail: `HTTP ${missingProduct.response.status}`,
+    };
+  });
+
   await runCheck('update product', async () => {
     const updateProduct = await requestJson(
       `${frontendBaseUrl}/api/products/${createdProduct.id}`,
@@ -567,6 +656,51 @@ async function main() {
       detail: `newPrice=${updateProduct.json.data.price}`,
       businessIds: {
         productId: createdProduct.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: buyer cannot update seller product', async () => {
+    const forbiddenUpdate = await requestJson(
+      `${frontendBaseUrl}/api/products/${createdProduct.id}`,
+      {
+        method: 'PUT',
+        headers: authHeaders(buyer.token, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          title: 'Forbidden Buyer Update',
+          price: 89,
+          description: 'Buyer should not be able to edit seller product.',
+          location: 'South Gate',
+          images: [uploadedImage.url],
+        }),
+      },
+    );
+
+    assertErrorResponse(forbiddenUpdate, 403, '无权修改此商品', 'buyer update seller product');
+    return {
+      detail: `HTTP ${forbiddenUpdate.response.status}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: buyer.user.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: buyer cannot delete seller product', async () => {
+    const forbiddenDelete = await requestJson(
+      `${frontendBaseUrl}/api/products/${createdProduct.id}`,
+      {
+        method: 'DELETE',
+        headers: authHeaders(buyer.token),
+      },
+    );
+
+    assertErrorResponse(forbiddenDelete, 403, '无权删除此商品', 'buyer delete seller product');
+    return {
+      detail: `HTTP ${forbiddenDelete.response.status}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: buyer.user.id,
       },
     };
   });
@@ -614,6 +748,52 @@ async function main() {
   });
 
   logStep('create and complete the minimal order loop');
+  await runCheck('negative regression: order invalid contact phone rejected', async () => {
+    const invalidOrderPhone = await requestJson(`${frontendBaseUrl}/api/orders`, {
+      method: 'POST',
+      headers: authHeaders(buyer.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        productId: createdProduct.id,
+        meetLocation: 'Cafeteria',
+        contactPhone: '12000000000',
+        contactName: 'Docker Buyer',
+        remark: 'invalid phone regression',
+      }),
+    });
+
+    assertErrorResponse(invalidOrderPhone, 400, '手机号格式不正确', 'order invalid contact phone');
+    return {
+      detail: `HTTP ${invalidOrderPhone.response.status}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: buyer.user.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: seller cannot buy own product', async () => {
+    const selfOrder = await requestJson(`${frontendBaseUrl}/api/orders`, {
+      method: 'POST',
+      headers: authHeaders(seller.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        productId: createdProduct.id,
+        meetLocation: 'Cafeteria',
+        contactPhone: seller.phone,
+        contactName: 'Docker Seller',
+        remark: 'self order regression',
+      }),
+    });
+
+    assertErrorResponse(selfOrder, 400, '不能购买自己的商品', 'seller buy own product');
+    return {
+      detail: `HTTP ${selfOrder.response.status}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: seller.user.id,
+      },
+    };
+  });
+
   const createdOrder = await runCheck('create order', async () => {
     const createOrder = await requestJson(`${frontendBaseUrl}/api/orders`, {
       method: 'POST',
@@ -667,6 +847,44 @@ async function main() {
     );
     return {
       detail: `contains orderId=${createdOrder.id}`,
+      businessIds: {
+        orderId: createdOrder.id,
+        userId: seller.user.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: buyer cannot ship order', async () => {
+    const forbiddenShip = await requestJson(
+      `${frontendBaseUrl}/api/orders/${createdOrder.id}/ship`,
+      {
+        method: 'POST',
+        headers: authHeaders(buyer.token),
+      },
+    );
+
+    assertErrorResponse(forbiddenShip, 403, '无权操作此订单', 'buyer ship order');
+    return {
+      detail: `HTTP ${forbiddenShip.response.status}`,
+      businessIds: {
+        orderId: createdOrder.id,
+        userId: buyer.user.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: seller cannot complete order', async () => {
+    const forbiddenComplete = await requestJson(
+      `${frontendBaseUrl}/api/orders/${createdOrder.id}/complete`,
+      {
+        method: 'POST',
+        headers: authHeaders(seller.token),
+      },
+    );
+
+    assertErrorResponse(forbiddenComplete, 403, '无权操作此订单', 'seller complete order');
+    return {
+      detail: `HTTP ${forbiddenComplete.response.status}`,
       businessIds: {
         orderId: createdOrder.id,
         userId: seller.user.id,
