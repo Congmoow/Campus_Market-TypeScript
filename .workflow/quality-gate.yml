@@ -1,0 +1,28 @@
+name: quality-gate
+displayName: '质量门禁'
+triggers:
+  push:
+    - matchType: PRECISE
+      branch: main
+    - matchType: PRECISE
+      branch: master
+commitMessage: ''
+stages:
+  - stage:
+      name: quality-gate-stage
+      displayName: '质量门禁'
+      failFast: false
+      steps:
+        - step: npmbuild@1
+          name: quality-gate-step
+          displayName: '执行代码级测试'
+          inputs:
+            nodeVersion: 14.15
+            goals: |
+              chmod +x scripts/ci/setup-node20.sh scripts/ci/run-code-tests.sh
+              bash ./scripts/ci/run-code-tests.sh
+            uploadArtifact: true
+            uploadArtifactOptions:
+              artifactPath: './reports'
+              artifactRepository: 'campus-market-test-reports'
+              artifactName: 'quality-gate-reports'

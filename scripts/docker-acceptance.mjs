@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+import { createAcceptanceReporter } from './acceptance-report.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
@@ -10,20 +12,58 @@ const repoRoot = path.resolve(__dirname, '..');
 const frontendBaseUrl = process.env.DOCKER_ACCEPTANCE_FRONTEND_URL || 'http://localhost';
 const backendBaseUrl = process.env.DOCKER_ACCEPTANCE_BACKEND_URL || 'http://localhost:3000';
 
-const results = [];
+const reporter = createAcceptanceReporter({
+  repoRoot,
+  frontendBaseUrl,
+  backendBaseUrl,
+  envSnapshot: {
+    nodeVersion: process.version,
+    nodeEnv: process.env.NODE_ENV ?? null,
+    ci: process.env.CI ?? null,
+    platform: process.platform,
+  },
+});
 
 function logStep(message) {
   process.stdout.write(`\n[acceptance] ${message}\n`);
 }
 
-function record(name, detail) {
-  results.push({ name, detail });
-  process.stdout.write(`  - ${name}: ${detail}\n`);
-}
-
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
+  }
+}
+
+function normalizeCheckPayload(payload) {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    ('value' in payload ||
+      'detail' in payload ||
+      'businessId' in payload ||
+      'businessIds' in payload)
+  ) {
+    return payload;
+  }
+
+  return {
+    value: payload,
+  };
+}
+
+async function runCheck(name, action) {
+  try {
+    return await reporter.runCheck(name, async () => {
+      const payload = normalizeCheckPayload(await action());
+      process.stdout.write(`  - ${name}: ${payload.detail ?? 'OK'}\n`);
+      return payload;
+    });
+  } catch (error) {
+    process.stdout.write(
+      `  - ${name}: FAILED ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    throw error;
   }
 }
 
@@ -39,6 +79,22 @@ async function requestJson(url, options = {}) {
   }
 
   return { response, text, json };
+}
+
+function assertErrorResponse(result, expectedStatus, expectedMessageFragment, context) {
+  assert(
+    result.response.status === expectedStatus,
+    `${context} expected ${expectedStatus}, got ${result.response.status}: ${result.text}`,
+  );
+  assert(result.json?.success === false, `${context} should return success=false`);
+  assert(result.json?.statusCode === expectedStatus, `${context} should return statusCode`);
+
+  if (expectedMessageFragment) {
+    assert(
+      String(result.json?.message || '').includes(expectedMessageFragment),
+      `${context} message should include ${expectedMessageFragment}`,
+    );
+  }
 }
 
 function authHeaders(token, extraHeaders = {}) {
@@ -200,357 +256,823 @@ function queryPostgresSingleValue(sql) {
   return result.stdout.trim();
 }
 
-async function main() {
-  logStep('verify frontend/backend connectivity through nginx and backend');
-  const homeResponse = await fetch(`${frontendBaseUrl}`);
-  assert(homeResponse.ok, `frontend home failed: ${homeResponse.status}`);
-  record('frontend home', `HTTP ${homeResponse.status}`);
-
-  const backendHealth = await requestJson(`${backendBaseUrl}/health`);
-  assert(backendHealth.response.ok, `backend health failed: ${backendHealth.response.status}`);
-  record('backend health', `HTTP ${backendHealth.response.status}`);
-
-  const latestViaFrontend = await requestJson(`${frontendBaseUrl}/api/products/latest?limit=5`);
-  assert(
-    latestViaFrontend.response.ok,
-    `frontend latest failed: ${latestViaFrontend.response.status}`,
-  );
-  assert(latestViaFrontend.json?.success === true, 'frontend latest payload invalid');
-  record('nginx /api proxy', `HTTP ${latestViaFrontend.response.status}`);
-
-  const categoriesViaFrontend = await requestJson(`${frontendBaseUrl}/api/categories`);
-  assert(
-    categoriesViaFrontend.response.ok,
-    `categories failed: ${categoriesViaFrontend.response.status}`,
-  );
-  assert(categoriesViaFrontend.json?.success === true, 'categories payload invalid');
-  assert(
-    (categoriesViaFrontend.json?.data?.length ?? 0) > 0,
-    'category list should not be empty after docker initialization',
-  );
-  record('category list', `${categoriesViaFrontend.json?.data?.length ?? 0} categories`);
-
-  const unfinishedMigrationsBefore = Number(
-    queryPostgresSingleValue(
-      `SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NULL AND rolled_back_at IS NULL`,
-    ),
-  );
-  assert(
-    unfinishedMigrationsBefore === 0,
-    `unfinished prisma migrations remain before acceptance flow: ${unfinishedMigrationsBefore}`,
-  );
-  record('prisma migration state', `unfinished=${unfinishedMigrationsBefore}`);
-
-  const unauthorizedMe = await requestJson(`${frontendBaseUrl}/api/auth/me`);
-  assert(
-    unauthorizedMe.response.status === 401,
-    `unauthorized me expected 401, got ${unauthorizedMe.response.status}`,
-  );
-  record('protected endpoint guard', `HTTP ${unauthorizedMe.response.status}`);
-
-  const invalidProduct = await requestJson(`${frontendBaseUrl}/api/products`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      title: '',
-      description: '',
-      price: -1,
-      location: '',
-      images: [],
-    }),
-  });
-  assert(
-    invalidProduct.response.status === 401,
-    `unauthenticated create expected 401, got ${invalidProduct.response.status}`,
-  );
-  record('unauthenticated create product blocked', `HTTP ${invalidProduct.response.status}`);
-
-  logStep('register seller and buyer, then verify login and refresh cookie');
-  const seller = await registerUser('2026', 'Docker Seller');
-  const buyer = await registerUser('2025', 'Docker Buyer');
-  record('register seller', `userId=${seller.user.id}`);
-  record('register buyer', `userId=${buyer.user.id}`);
-
-  const login = await loginUser(seller.studentId, seller.password);
-  assert(login.user.id === seller.user.id, 'login returned unexpected seller');
-  assert(login.setCookie.includes('refreshToken='), 'refresh token cookie missing');
-  assert(
-    !login.setCookie.includes('Secure'),
-    'refresh token cookie should not be Secure for local HTTP docker validation',
-  );
-  record('login', `userId=${login.user.id}`);
-  record('refresh cookie', 'present and usable over local HTTP');
-
-  const meWithJwt = await requestJson(`${frontendBaseUrl}/api/auth/me`, {
-    headers: authHeaders(login.token),
-  });
-  assert(meWithJwt.response.ok, `me with token failed: ${meWithJwt.response.status}`);
-  assert(meWithJwt.json?.data?.studentId === seller.studentId, 'me endpoint returned wrong user');
-  record('JWT authenticated endpoint', `studentId=${meWithJwt.json.data.studentId}`);
-
-  const refreshWithCookie = await requestJson(`${frontendBaseUrl}/api/auth/refresh`, {
-    method: 'POST',
-    headers: {
-      Cookie: login.setCookie.split(';')[0],
-    },
-  });
-  assert(refreshWithCookie.response.ok, `refresh failed: ${refreshWithCookie.response.status}`);
-  assert(
-    refreshWithCookie.json?.data?.token,
-    'refresh token exchange did not return new access token',
-  );
-  record('refresh token exchange', 'success');
-
-  logStep('upload image and verify /uploads through nginx');
-  const uploadedImage = await uploadProductImage(seller.token);
-  record('upload product image', uploadedImage.url);
-
-  const uploadedViaFrontend = await fetch(`${frontendBaseUrl}${uploadedImage.url}`);
-  assert(
-    uploadedViaFrontend.ok,
-    `uploaded image via frontend failed: ${uploadedViaFrontend.status}`,
-  );
-  record('nginx /uploads proxy', `HTTP ${uploadedViaFrontend.status}`);
-
-  const uploadedViaBackend = await fetch(`${backendBaseUrl}${uploadedImage.url}`);
-  assert(uploadedViaBackend.ok, `uploaded image via backend failed: ${uploadedViaBackend.status}`);
-  record('backend uploads static route', `HTTP ${uploadedViaBackend.status}`);
-
-  const uploadedFilename = uploadedImage.filename;
-  const uploadCheck = runDockerCompose([
-    'exec',
-    '-T',
-    'backend',
-    'sh',
-    '-lc',
-    `test -f /app/uploads/products/${uploadedFilename} && echo exists`,
-  ]);
-  assert(uploadCheck.includes('exists'), 'uploaded file missing inside backend volume');
-  record('upload volume file', uploadedFilename);
-
-  logStep('create, query, update, and re-query product');
-  const createProduct = await requestJson(`${frontendBaseUrl}/api/products`, {
-    method: 'POST',
-    headers: authHeaders(seller.token, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({
-      title: 'Docker Acceptance Product',
-      description: 'Created during docker acceptance validation.',
-      price: 88,
-      originalPrice: 128,
-      location: 'Library Gate',
-      images: [uploadedImage.url],
-    }),
-  });
-  assert(createProduct.response.ok, `create product failed: ${createProduct.response.status}`);
-  assert(createProduct.json?.success === true, 'create product payload invalid');
-  const createdProduct = createProduct.json.data;
-  record('create product', `productId=${createdProduct.id}`);
-
-  const productList = await requestJson(
-    `${frontendBaseUrl}/api/products?page=0&size=20&sort=latest`,
-  );
-  assert(productList.response.ok, `product list failed: ${productList.response.status}`);
-  const listedProduct = productList.json?.data?.content?.find(
-    (product) => product.id === createdProduct.id,
-  );
-  assert(listedProduct, 'created product missing from product list');
-  record('product list contains new product', `productId=${createdProduct.id}`);
-
-  const productDetail = await requestJson(`${frontendBaseUrl}/api/products/${createdProduct.id}`);
-  assert(productDetail.response.ok, `product detail failed: ${productDetail.response.status}`);
-  assert(
-    productDetail.json?.data?.id === createdProduct.id,
-    'product detail returned wrong product',
-  );
-  record('product detail', `productId=${productDetail.json.data.id}`);
-
-  const updateProduct = await requestJson(`${frontendBaseUrl}/api/products/${createdProduct.id}`, {
-    method: 'PUT',
-    headers: authHeaders(seller.token, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({
-      title: 'Docker Acceptance Product Updated',
-      price: 99,
-      description: 'Updated during docker acceptance validation.',
-      location: 'North Gate',
-      images: [uploadedImage.url],
-    }),
-  });
-  assert(updateProduct.response.ok, `update product failed: ${updateProduct.response.status}`);
-  assert(
-    updateProduct.json?.data?.title === 'Docker Acceptance Product Updated',
-    'product update did not persist',
-  );
-  record('update product', `newPrice=${updateProduct.json.data.price}`);
-
-  const myProducts = await requestJson(`${frontendBaseUrl}/api/products/my`, {
-    headers: authHeaders(seller.token),
-  });
-  assert(myProducts.response.ok, `my products failed: ${myProducts.response.status}`);
-  assert(
-    myProducts.json?.data?.some((product) => product.id === createdProduct.id),
-    'my products missing created product',
-  );
-  record('seller my products', `contains productId=${createdProduct.id}`);
-
-  const invalidCreateWithToken = await requestJson(`${frontendBaseUrl}/api/products`, {
-    method: 'POST',
-    headers: authHeaders(seller.token, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({
-      title: 'Bad Product',
-      description: 'bad',
-      price: -1,
-      location: 'X',
-      images: [],
-    }),
-  });
-  assert(
-    invalidCreateWithToken.response.status === 400,
-    `invalid create expected 400, got ${invalidCreateWithToken.response.status}`,
-  );
-  record('validation error response', `HTTP ${invalidCreateWithToken.response.status}`);
-
-  logStep('create and complete the minimal order loop');
-  const createOrder = await requestJson(`${frontendBaseUrl}/api/orders`, {
-    method: 'POST',
-    headers: authHeaders(buyer.token, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({
-      productId: createdProduct.id,
-      meetLocation: 'Cafeteria',
-      contactPhone: buyer.phone,
-      contactName: 'Docker Buyer',
-      remark: 'acceptance test order',
-    }),
-  });
-  assert(createOrder.response.ok, `create order failed: ${createOrder.response.status}`);
-  assert(createOrder.json?.success === true, 'create order payload invalid');
-  const createdOrder = createOrder.json.data;
-  record('create order', `orderId=${createdOrder.id}`);
-
-  const buyerOrders = await requestJson(`${frontendBaseUrl}/api/orders/me`, {
-    headers: authHeaders(buyer.token),
-  });
-  assert(buyerOrders.response.ok, `buyer orders failed: ${buyerOrders.response.status}`);
-  assert(
-    buyerOrders.json?.data?.some((order) => order.id === createdOrder.id),
-    'buyer order list missing order',
-  );
-  record('buyer order list', `contains orderId=${createdOrder.id}`);
-
-  const sellerOrders = await requestJson(`${frontendBaseUrl}/api/orders/my/sales`, {
-    headers: authHeaders(seller.token),
-  });
-  assert(sellerOrders.response.ok, `seller orders failed: ${sellerOrders.response.status}`);
-  assert(
-    sellerOrders.json?.data?.some((order) => order.id === createdOrder.id),
-    'seller sales list missing order',
-  );
-  record('seller sales list', `contains orderId=${createdOrder.id}`);
-
-  const shipOrder = await requestJson(`${frontendBaseUrl}/api/orders/${createdOrder.id}/ship`, {
-    method: 'POST',
-    headers: authHeaders(seller.token),
-  });
-  assert(shipOrder.response.ok, `ship order failed: ${shipOrder.response.status}`);
-  assert(shipOrder.json?.data?.status === 'SHIPPED', 'order status did not become SHIPPED');
-  record('ship order', shipOrder.json.data.status);
-
-  const completeOrder = await requestJson(
-    `${frontendBaseUrl}/api/orders/${createdOrder.id}/complete`,
-    {
-      method: 'POST',
-      headers: authHeaders(buyer.token),
-    },
-  );
-  assert(completeOrder.response.ok, `complete order failed: ${completeOrder.response.status}`);
-  assert(completeOrder.json?.data?.status === 'COMPLETED', 'order status did not become COMPLETED');
-  record('complete order', completeOrder.json.data.status);
-
-  const completedOrderDetail = await requestJson(
-    `${frontendBaseUrl}/api/orders/${createdOrder.id}`,
-    {
-      headers: authHeaders(buyer.token),
-    },
-  );
-  assert(
-    completedOrderDetail.response.ok,
-    `order detail failed: ${completedOrderDetail.response.status}`,
-  );
-  assert(
-    completedOrderDetail.json?.data?.status === 'COMPLETED',
-    'order detail did not persist completed status',
-  );
-  record('order detail', completedOrderDetail.json.data.status);
-
-  const soldProductDetail = await requestJson(
-    `${frontendBaseUrl}/api/products/${createdProduct.id}`,
-  );
-  assert(
-    soldProductDetail.response.ok,
-    `sold product detail failed: ${soldProductDetail.response.status}`,
-  );
-  assert(
-    soldProductDetail.json?.data?.status === 'SOLD',
-    'product status did not become SOLD after completing order',
-  );
-  record('product sold state', soldProductDetail.json.data.status);
-
-  logStep('restart containers and verify persistence');
-  runDockerCompose(['restart', 'postgres', 'backend', 'frontend']);
-  await waitForServices();
-  record('docker restart', 'postgres/backend/frontend restarted');
-
-  const persistedProduct = await requestJson(
-    `${frontendBaseUrl}/api/products/${createdProduct.id}`,
-  );
-  assert(
-    persistedProduct.response.ok,
-    `persisted product failed: ${persistedProduct.response.status}`,
-  );
-  assert(persistedProduct.json?.data?.id === createdProduct.id, 'product missing after restart');
-  record('product persistence', `productId=${createdProduct.id}`);
-
-  const persistedOrder = await requestJson(`${frontendBaseUrl}/api/orders/${createdOrder.id}`, {
-    headers: authHeaders(buyer.token),
-  });
-  assert(persistedOrder.response.ok, `persisted order failed: ${persistedOrder.response.status}`);
-  assert(persistedOrder.json?.data?.status === 'COMPLETED', 'order status lost after restart');
-  record('order persistence', persistedOrder.json.data.status);
-
-  const persistedUpload = await fetch(`${frontendBaseUrl}${uploadedImage.url}`);
-  assert(persistedUpload.ok, `persisted upload failed: ${persistedUpload.status}`);
-  record('upload persistence', `HTTP ${persistedUpload.status}`);
-
-  const persistedUploadCheck = runDockerCompose([
-    'exec',
-    '-T',
-    'backend',
-    'sh',
-    '-lc',
-    `test -f /app/uploads/products/${uploadedFilename} && echo exists`,
-  ]);
-  assert(persistedUploadCheck.includes('exists'), 'uploaded file missing after restart');
-  record('upload volume persistence', uploadedFilename);
-
-  const unfinishedMigrationsAfterRestart = Number(
-    queryPostgresSingleValue(
-      `SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NULL AND rolled_back_at IS NULL`,
-    ),
-  );
-  assert(
-    unfinishedMigrationsAfterRestart === 0,
-    `unfinished prisma migrations remain after restart: ${unfinishedMigrationsAfterRestart}`,
-  );
-  record('prisma migration persistence', `unfinished=${unfinishedMigrationsAfterRestart}`);
-
-  logStep('acceptance verification completed');
-  process.stdout.write(`\n[acceptance] total checks: ${results.length}\n`);
+async function writeFinalReport(error = null) {
+  const report = await reporter.finalize({ error });
+  process.stdout.write(`\n[acceptance] total checks: ${report.totals.total}\n`);
+  process.stdout.write('[acceptance] report written: reports/acceptance-report.json\n');
+  process.stdout.write('[acceptance] summary written: reports/acceptance-summary.md\n');
+  return report;
 }
 
-main().catch((error) => {
-  process.stderr.write(
-    `\n[acceptance] FAILED: ${error instanceof Error ? error.stack || error.message : String(error)}\n`,
-  );
-  process.exitCode = 1;
-});
+async function main() {
+  logStep('verify frontend/backend connectivity through nginx and backend');
+  await runCheck('frontend home', async () => {
+    const homeResponse = await fetch(`${frontendBaseUrl}`);
+    assert(homeResponse.ok, `frontend home failed: ${homeResponse.status}`);
+    return {
+      detail: `HTTP ${homeResponse.status}`,
+    };
+  });
+
+  await runCheck('backend health', async () => {
+    const backendHealth = await requestJson(`${backendBaseUrl}/health`);
+    assert(backendHealth.response.ok, `backend health failed: ${backendHealth.response.status}`);
+    return {
+      detail: `HTTP ${backendHealth.response.status}`,
+    };
+  });
+
+  await runCheck('nginx /api proxy', async () => {
+    const latestViaFrontend = await requestJson(`${frontendBaseUrl}/api/products/latest?limit=5`);
+    assert(
+      latestViaFrontend.response.ok,
+      `frontend latest failed: ${latestViaFrontend.response.status}`,
+    );
+    assert(latestViaFrontend.json?.success === true, 'frontend latest payload invalid');
+    return {
+      detail: `HTTP ${latestViaFrontend.response.status}`,
+    };
+  });
+
+  await runCheck('category list', async () => {
+    const categoriesViaFrontend = await requestJson(`${frontendBaseUrl}/api/categories`);
+    assert(
+      categoriesViaFrontend.response.ok,
+      `categories failed: ${categoriesViaFrontend.response.status}`,
+    );
+    assert(categoriesViaFrontend.json?.success === true, 'categories payload invalid');
+    assert(
+      (categoriesViaFrontend.json?.data?.length ?? 0) > 0,
+      'category list should not be empty after docker initialization',
+    );
+    return {
+      detail: `${categoriesViaFrontend.json?.data?.length ?? 0} categories`,
+    };
+  });
+
+  await runCheck('prisma migration state', async () => {
+    const unfinishedMigrationsBefore = Number(
+      queryPostgresSingleValue(
+        `SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NULL AND rolled_back_at IS NULL`,
+      ),
+    );
+    assert(
+      unfinishedMigrationsBefore === 0,
+      `unfinished prisma migrations remain before acceptance flow: ${unfinishedMigrationsBefore}`,
+    );
+    return {
+      detail: `unfinished=${unfinishedMigrationsBefore}`,
+    };
+  });
+
+  await runCheck('protected endpoint guard', async () => {
+    const unauthorizedMe = await requestJson(`${frontendBaseUrl}/api/auth/me`);
+    assert(
+      unauthorizedMe.response.status === 401,
+      `unauthorized me expected 401, got ${unauthorizedMe.response.status}`,
+    );
+    return {
+      detail: `HTTP ${unauthorizedMe.response.status}`,
+    };
+  });
+
+  await runCheck('unauthenticated create product blocked', async () => {
+    const invalidProduct = await requestJson(`${frontendBaseUrl}/api/products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: '',
+        description: '',
+        price: -1,
+        location: '',
+        images: [],
+      }),
+    });
+    assert(
+      invalidProduct.response.status === 401,
+      `unauthenticated create expected 401, got ${invalidProduct.response.status}`,
+    );
+    return {
+      detail: `HTTP ${invalidProduct.response.status}`,
+    };
+  });
+
+  logStep('run negative regression cases for auth and query validation');
+  await runCheck('negative regression: unknown login rejected', async () => {
+    const invalidLogin = await requestJson(`${frontendBaseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        studentId: '20999999',
+        password: 'WrongPassw0rd!',
+      }),
+    });
+
+    assertErrorResponse(invalidLogin, 401, '学号或密码错误', 'unknown login');
+    return {
+      detail: `HTTP ${invalidLogin.response.status}`,
+    };
+  });
+
+  await runCheck('negative regression: invalid register phone rejected', async () => {
+    const invalidRegister = await requestJson(`${frontendBaseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        studentId: '20269999',
+        password: 'Passw0rd!',
+        phone: '12000000000',
+        name: 'Invalid Phone',
+      }),
+    });
+
+    assertErrorResponse(invalidRegister, 400, '手机号格式不正确', 'invalid register phone');
+    return {
+      detail: `HTTP ${invalidRegister.response.status}`,
+    };
+  });
+
+  await runCheck('negative regression: refresh without cookie rejected', async () => {
+    const refreshWithoutCookie = await requestJson(`${frontendBaseUrl}/api/auth/refresh`, {
+      method: 'POST',
+    });
+
+    assertErrorResponse(
+      refreshWithoutCookie,
+      401,
+      '未提供 refresh token',
+      'refresh without cookie',
+    );
+    return {
+      detail: `HTTP ${refreshWithoutCookie.response.status}`,
+    };
+  });
+
+  await runCheck('negative regression: invalid product page query rejected', async () => {
+    const invalidProductPage = await requestJson(`${frontendBaseUrl}/api/products?page=-1&size=20`);
+
+    assertErrorResponse(invalidProductPage, 400, 'page 必须大于等于 0', 'invalid product page');
+    return {
+      detail: `HTTP ${invalidProductPage.response.status}`,
+    };
+  });
+
+  logStep('register seller and buyer, then verify login and refresh cookie');
+  const seller = await runCheck('register seller', async () => {
+    const registeredSeller = await registerUser('2026', 'Docker Seller');
+    return {
+      value: registeredSeller,
+      detail: `userId=${registeredSeller.user.id}`,
+      businessIds: {
+        userId: registeredSeller.user.id,
+        studentId: registeredSeller.studentId,
+      },
+    };
+  });
+
+  const buyer = await runCheck('register buyer', async () => {
+    const registeredBuyer = await registerUser('2025', 'Docker Buyer');
+    return {
+      value: registeredBuyer,
+      detail: `userId=${registeredBuyer.user.id}`,
+      businessIds: {
+        userId: registeredBuyer.user.id,
+        studentId: registeredBuyer.studentId,
+      },
+    };
+  });
+
+  const login = await runCheck('login', async () => {
+    const loginResult = await loginUser(seller.studentId, seller.password);
+    assert(loginResult.user.id === seller.user.id, 'login returned unexpected seller');
+    assert(loginResult.setCookie.includes('refreshToken='), 'refresh token cookie missing');
+    assert(
+      !loginResult.setCookie.includes('Secure'),
+      'refresh token cookie should not be Secure for local HTTP docker validation',
+    );
+    return {
+      value: loginResult,
+      detail: `userId=${loginResult.user.id}`,
+      businessIds: {
+        userId: loginResult.user.id,
+        studentId: seller.studentId,
+      },
+    };
+  });
+
+  await runCheck('refresh cookie', async () => ({
+    detail: 'present and usable over local HTTP',
+    businessIds: {
+      userId: login.user.id,
+    },
+  }));
+
+  await runCheck('JWT authenticated endpoint', async () => {
+    const meWithJwt = await requestJson(`${frontendBaseUrl}/api/auth/me`, {
+      headers: authHeaders(login.token),
+    });
+    assert(meWithJwt.response.ok, `me with token failed: ${meWithJwt.response.status}`);
+    assert(meWithJwt.json?.data?.studentId === seller.studentId, 'me endpoint returned wrong user');
+    return {
+      detail: `studentId=${meWithJwt.json.data.studentId}`,
+      businessIds: {
+        userId: login.user.id,
+        studentId: meWithJwt.json.data.studentId,
+      },
+    };
+  });
+
+  await runCheck('refresh token exchange', async () => {
+    const refreshWithCookie = await requestJson(`${frontendBaseUrl}/api/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        Cookie: login.setCookie.split(';')[0],
+      },
+    });
+    assert(refreshWithCookie.response.ok, `refresh failed: ${refreshWithCookie.response.status}`);
+    assert(
+      refreshWithCookie.json?.data?.token,
+      'refresh token exchange did not return new access token',
+    );
+    return {
+      detail: 'success',
+      businessIds: {
+        userId: login.user.id,
+      },
+    };
+  });
+
+  logStep('upload image and verify /uploads through nginx');
+  const uploadedImage = await runCheck('upload product image', async () => {
+    const image = await uploadProductImage(seller.token);
+    return {
+      value: image,
+      detail: image.url,
+      businessIds: {
+        filename: image.filename,
+      },
+    };
+  });
+
+  await runCheck('nginx /uploads proxy', async () => {
+    const uploadedViaFrontend = await fetch(`${frontendBaseUrl}${uploadedImage.url}`);
+    assert(
+      uploadedViaFrontend.ok,
+      `uploaded image via frontend failed: ${uploadedViaFrontend.status}`,
+    );
+    return {
+      detail: `HTTP ${uploadedViaFrontend.status}`,
+      businessIds: {
+        filename: uploadedImage.filename,
+      },
+    };
+  });
+
+  await runCheck('backend uploads static route', async () => {
+    const uploadedViaBackend = await fetch(`${backendBaseUrl}${uploadedImage.url}`);
+    assert(
+      uploadedViaBackend.ok,
+      `uploaded image via backend failed: ${uploadedViaBackend.status}`,
+    );
+    return {
+      detail: `HTTP ${uploadedViaBackend.status}`,
+      businessIds: {
+        filename: uploadedImage.filename,
+      },
+    };
+  });
+
+  await runCheck('upload volume file', async () => {
+    const uploadCheck = runDockerCompose([
+      'exec',
+      '-T',
+      'backend',
+      'sh',
+      '-lc',
+      `test -f /app/uploads/products/${uploadedImage.filename} && echo exists`,
+    ]);
+    assert(uploadCheck.includes('exists'), 'uploaded file missing inside backend volume');
+    return {
+      detail: uploadedImage.filename,
+      businessIds: {
+        filename: uploadedImage.filename,
+      },
+    };
+  });
+
+  logStep('create, query, update, and re-query product');
+  const createdProduct = await runCheck('create product', async () => {
+    const createProduct = await requestJson(`${frontendBaseUrl}/api/products`, {
+      method: 'POST',
+      headers: authHeaders(seller.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        title: 'Docker Acceptance Product',
+        description: 'Created during docker acceptance validation.',
+        price: 88,
+        originalPrice: 128,
+        location: 'Library Gate',
+        images: [uploadedImage.url],
+      }),
+    });
+    assert(createProduct.response.ok, `create product failed: ${createProduct.response.status}`);
+    assert(createProduct.json?.success === true, 'create product payload invalid');
+    return {
+      value: createProduct.json.data,
+      detail: `productId=${createProduct.json.data.id}`,
+      businessIds: {
+        productId: createProduct.json.data.id,
+      },
+    };
+  });
+
+  await runCheck('product list contains new product', async () => {
+    const productList = await requestJson(
+      `${frontendBaseUrl}/api/products?page=0&size=20&sort=latest`,
+    );
+    assert(productList.response.ok, `product list failed: ${productList.response.status}`);
+    const listedProduct = productList.json?.data?.content?.find(
+      (product) => product.id === createdProduct.id,
+    );
+    assert(listedProduct, 'created product missing from product list');
+    return {
+      detail: `productId=${createdProduct.id}`,
+      businessIds: {
+        productId: createdProduct.id,
+      },
+    };
+  });
+
+  await runCheck('product detail', async () => {
+    const productDetail = await requestJson(`${frontendBaseUrl}/api/products/${createdProduct.id}`);
+    assert(productDetail.response.ok, `product detail failed: ${productDetail.response.status}`);
+    assert(
+      productDetail.json?.data?.id === createdProduct.id,
+      'product detail returned wrong product',
+    );
+    return {
+      detail: `productId=${productDetail.json.data.id}`,
+      businessIds: {
+        productId: productDetail.json.data.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: missing product detail returns 404', async () => {
+    const missingProduct = await requestJson(`${frontendBaseUrl}/api/products/999999999`);
+
+    assertErrorResponse(missingProduct, 404, '商品不存在', 'missing product detail');
+    return {
+      detail: `HTTP ${missingProduct.response.status}`,
+    };
+  });
+
+  await runCheck('update product', async () => {
+    const updateProduct = await requestJson(
+      `${frontendBaseUrl}/api/products/${createdProduct.id}`,
+      {
+        method: 'PUT',
+        headers: authHeaders(seller.token, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          title: 'Docker Acceptance Product Updated',
+          price: 99,
+          description: 'Updated during docker acceptance validation.',
+          location: 'North Gate',
+          images: [uploadedImage.url],
+        }),
+      },
+    );
+    assert(updateProduct.response.ok, `update product failed: ${updateProduct.response.status}`);
+    assert(
+      updateProduct.json?.data?.title === 'Docker Acceptance Product Updated',
+      'product update did not persist',
+    );
+    return {
+      detail: `newPrice=${updateProduct.json.data.price}`,
+      businessIds: {
+        productId: createdProduct.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: buyer cannot update seller product', async () => {
+    const forbiddenUpdate = await requestJson(
+      `${frontendBaseUrl}/api/products/${createdProduct.id}`,
+      {
+        method: 'PUT',
+        headers: authHeaders(buyer.token, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          title: 'Forbidden Buyer Update',
+          price: 89,
+          description: 'Buyer should not be able to edit seller product.',
+          location: 'South Gate',
+          images: [uploadedImage.url],
+        }),
+      },
+    );
+
+    assertErrorResponse(forbiddenUpdate, 403, '无权修改此商品', 'buyer update seller product');
+    return {
+      detail: `HTTP ${forbiddenUpdate.response.status}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: buyer.user.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: buyer cannot delete seller product', async () => {
+    const forbiddenDelete = await requestJson(
+      `${frontendBaseUrl}/api/products/${createdProduct.id}`,
+      {
+        method: 'DELETE',
+        headers: authHeaders(buyer.token),
+      },
+    );
+
+    assertErrorResponse(forbiddenDelete, 403, '无权删除此商品', 'buyer delete seller product');
+    return {
+      detail: `HTTP ${forbiddenDelete.response.status}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: buyer.user.id,
+      },
+    };
+  });
+
+  await runCheck('seller my products', async () => {
+    const myProducts = await requestJson(`${frontendBaseUrl}/api/products/my`, {
+      headers: authHeaders(seller.token),
+    });
+    assert(myProducts.response.ok, `my products failed: ${myProducts.response.status}`);
+    assert(
+      myProducts.json?.data?.some((product) => product.id === createdProduct.id),
+      'my products missing created product',
+    );
+    return {
+      detail: `contains productId=${createdProduct.id}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: seller.user.id,
+      },
+    };
+  });
+
+  await runCheck('validation error response', async () => {
+    const invalidCreateWithToken = await requestJson(`${frontendBaseUrl}/api/products`, {
+      method: 'POST',
+      headers: authHeaders(seller.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        title: 'Bad Product',
+        description: 'bad',
+        price: -1,
+        location: 'X',
+        images: [],
+      }),
+    });
+    assert(
+      invalidCreateWithToken.response.status === 400,
+      `invalid create expected 400, got ${invalidCreateWithToken.response.status}`,
+    );
+    return {
+      detail: `HTTP ${invalidCreateWithToken.response.status}`,
+      businessIds: {
+        userId: seller.user.id,
+      },
+    };
+  });
+
+  logStep('create and complete the minimal order loop');
+  await runCheck('negative regression: order invalid contact phone rejected', async () => {
+    const invalidOrderPhone = await requestJson(`${frontendBaseUrl}/api/orders`, {
+      method: 'POST',
+      headers: authHeaders(buyer.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        productId: createdProduct.id,
+        meetLocation: 'Cafeteria',
+        contactPhone: '12000000000',
+        contactName: 'Docker Buyer',
+        remark: 'invalid phone regression',
+      }),
+    });
+
+    assertErrorResponse(invalidOrderPhone, 400, '手机号格式不正确', 'order invalid contact phone');
+    return {
+      detail: `HTTP ${invalidOrderPhone.response.status}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: buyer.user.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: seller cannot buy own product', async () => {
+    const selfOrder = await requestJson(`${frontendBaseUrl}/api/orders`, {
+      method: 'POST',
+      headers: authHeaders(seller.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        productId: createdProduct.id,
+        meetLocation: 'Cafeteria',
+        contactPhone: seller.phone,
+        contactName: 'Docker Seller',
+        remark: 'self order regression',
+      }),
+    });
+
+    assertErrorResponse(selfOrder, 400, '不能购买自己的商品', 'seller buy own product');
+    return {
+      detail: `HTTP ${selfOrder.response.status}`,
+      businessIds: {
+        productId: createdProduct.id,
+        userId: seller.user.id,
+      },
+    };
+  });
+
+  const createdOrder = await runCheck('create order', async () => {
+    const createOrder = await requestJson(`${frontendBaseUrl}/api/orders`, {
+      method: 'POST',
+      headers: authHeaders(buyer.token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        productId: createdProduct.id,
+        meetLocation: 'Cafeteria',
+        contactPhone: buyer.phone,
+        contactName: 'Docker Buyer',
+        remark: 'acceptance test order',
+      }),
+    });
+    assert(createOrder.response.ok, `create order failed: ${createOrder.response.status}`);
+    assert(createOrder.json?.success === true, 'create order payload invalid');
+    return {
+      value: createOrder.json.data,
+      detail: `orderId=${createOrder.json.data.id}`,
+      businessIds: {
+        orderId: createOrder.json.data.id,
+        productId: createdProduct.id,
+      },
+    };
+  });
+
+  await runCheck('buyer order list', async () => {
+    const buyerOrders = await requestJson(`${frontendBaseUrl}/api/orders/me`, {
+      headers: authHeaders(buyer.token),
+    });
+    assert(buyerOrders.response.ok, `buyer orders failed: ${buyerOrders.response.status}`);
+    assert(
+      buyerOrders.json?.data?.some((order) => order.id === createdOrder.id),
+      'buyer order list missing order',
+    );
+    return {
+      detail: `contains orderId=${createdOrder.id}`,
+      businessIds: {
+        orderId: createdOrder.id,
+        userId: buyer.user.id,
+      },
+    };
+  });
+
+  await runCheck('seller sales list', async () => {
+    const sellerOrders = await requestJson(`${frontendBaseUrl}/api/orders/my/sales`, {
+      headers: authHeaders(seller.token),
+    });
+    assert(sellerOrders.response.ok, `seller orders failed: ${sellerOrders.response.status}`);
+    assert(
+      sellerOrders.json?.data?.some((order) => order.id === createdOrder.id),
+      'seller sales list missing order',
+    );
+    return {
+      detail: `contains orderId=${createdOrder.id}`,
+      businessIds: {
+        orderId: createdOrder.id,
+        userId: seller.user.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: buyer cannot ship order', async () => {
+    const forbiddenShip = await requestJson(
+      `${frontendBaseUrl}/api/orders/${createdOrder.id}/ship`,
+      {
+        method: 'POST',
+        headers: authHeaders(buyer.token),
+      },
+    );
+
+    assertErrorResponse(forbiddenShip, 403, '无权操作此订单', 'buyer ship order');
+    return {
+      detail: `HTTP ${forbiddenShip.response.status}`,
+      businessIds: {
+        orderId: createdOrder.id,
+        userId: buyer.user.id,
+      },
+    };
+  });
+
+  await runCheck('negative regression: seller cannot complete order', async () => {
+    const forbiddenComplete = await requestJson(
+      `${frontendBaseUrl}/api/orders/${createdOrder.id}/complete`,
+      {
+        method: 'POST',
+        headers: authHeaders(seller.token),
+      },
+    );
+
+    assertErrorResponse(forbiddenComplete, 403, '无权操作此订单', 'seller complete order');
+    return {
+      detail: `HTTP ${forbiddenComplete.response.status}`,
+      businessIds: {
+        orderId: createdOrder.id,
+        userId: seller.user.id,
+      },
+    };
+  });
+
+  await runCheck('ship order', async () => {
+    const shipOrder = await requestJson(`${frontendBaseUrl}/api/orders/${createdOrder.id}/ship`, {
+      method: 'POST',
+      headers: authHeaders(seller.token),
+    });
+    assert(shipOrder.response.ok, `ship order failed: ${shipOrder.response.status}`);
+    assert(shipOrder.json?.data?.status === 'SHIPPED', 'order status did not become SHIPPED');
+    return {
+      detail: shipOrder.json.data.status,
+      businessIds: {
+        orderId: createdOrder.id,
+      },
+    };
+  });
+
+  await runCheck('complete order', async () => {
+    const completeOrder = await requestJson(
+      `${frontendBaseUrl}/api/orders/${createdOrder.id}/complete`,
+      {
+        method: 'POST',
+        headers: authHeaders(buyer.token),
+      },
+    );
+    assert(completeOrder.response.ok, `complete order failed: ${completeOrder.response.status}`);
+    assert(
+      completeOrder.json?.data?.status === 'COMPLETED',
+      'order status did not become COMPLETED',
+    );
+    return {
+      detail: completeOrder.json.data.status,
+      businessIds: {
+        orderId: createdOrder.id,
+      },
+    };
+  });
+
+  await runCheck('order detail', async () => {
+    const completedOrderDetail = await requestJson(
+      `${frontendBaseUrl}/api/orders/${createdOrder.id}`,
+      {
+        headers: authHeaders(buyer.token),
+      },
+    );
+    assert(
+      completedOrderDetail.response.ok,
+      `order detail failed: ${completedOrderDetail.response.status}`,
+    );
+    assert(
+      completedOrderDetail.json?.data?.status === 'COMPLETED',
+      'order detail did not persist completed status',
+    );
+    return {
+      detail: completedOrderDetail.json.data.status,
+      businessIds: {
+        orderId: createdOrder.id,
+      },
+    };
+  });
+
+  await runCheck('product sold state', async () => {
+    const soldProductDetail = await requestJson(
+      `${frontendBaseUrl}/api/products/${createdProduct.id}`,
+    );
+    assert(
+      soldProductDetail.response.ok,
+      `sold product detail failed: ${soldProductDetail.response.status}`,
+    );
+    assert(
+      soldProductDetail.json?.data?.status === 'SOLD',
+      'product status did not become SOLD after completing order',
+    );
+    return {
+      detail: soldProductDetail.json.data.status,
+      businessIds: {
+        orderId: createdOrder.id,
+        productId: createdProduct.id,
+      },
+    };
+  });
+
+  logStep('restart containers and verify persistence');
+  await runCheck('docker restart', async () => {
+    runDockerCompose(['restart', 'postgres', 'backend', 'frontend']);
+    await waitForServices();
+    return {
+      detail: 'postgres/backend/frontend restarted',
+    };
+  });
+
+  await runCheck('product persistence', async () => {
+    const persistedProduct = await requestJson(
+      `${frontendBaseUrl}/api/products/${createdProduct.id}`,
+    );
+    assert(
+      persistedProduct.response.ok,
+      `persisted product failed: ${persistedProduct.response.status}`,
+    );
+    assert(persistedProduct.json?.data?.id === createdProduct.id, 'product missing after restart');
+    return {
+      detail: `productId=${createdProduct.id}`,
+      businessIds: {
+        productId: createdProduct.id,
+      },
+    };
+  });
+
+  await runCheck('order persistence', async () => {
+    const persistedOrder = await requestJson(`${frontendBaseUrl}/api/orders/${createdOrder.id}`, {
+      headers: authHeaders(buyer.token),
+    });
+    assert(persistedOrder.response.ok, `persisted order failed: ${persistedOrder.response.status}`);
+    assert(persistedOrder.json?.data?.status === 'COMPLETED', 'order status lost after restart');
+    return {
+      detail: persistedOrder.json.data.status,
+      businessIds: {
+        orderId: createdOrder.id,
+      },
+    };
+  });
+
+  await runCheck('upload persistence', async () => {
+    const persistedUpload = await fetch(`${frontendBaseUrl}${uploadedImage.url}`);
+    assert(persistedUpload.ok, `persisted upload failed: ${persistedUpload.status}`);
+    return {
+      detail: `HTTP ${persistedUpload.status}`,
+      businessIds: {
+        filename: uploadedImage.filename,
+      },
+    };
+  });
+
+  await runCheck('upload volume persistence', async () => {
+    const persistedUploadCheck = runDockerCompose([
+      'exec',
+      '-T',
+      'backend',
+      'sh',
+      '-lc',
+      `test -f /app/uploads/products/${uploadedImage.filename} && echo exists`,
+    ]);
+    assert(persistedUploadCheck.includes('exists'), 'uploaded file missing after restart');
+    return {
+      detail: uploadedImage.filename,
+      businessIds: {
+        filename: uploadedImage.filename,
+      },
+    };
+  });
+
+  await runCheck('prisma migration persistence', async () => {
+    const unfinishedMigrationsAfterRestart = Number(
+      queryPostgresSingleValue(
+        `SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NULL AND rolled_back_at IS NULL`,
+      ),
+    );
+    assert(
+      unfinishedMigrationsAfterRestart === 0,
+      `unfinished prisma migrations remain after restart: ${unfinishedMigrationsAfterRestart}`,
+    );
+    return {
+      detail: `unfinished=${unfinishedMigrationsAfterRestart}`,
+    };
+  });
+}
+
+main()
+  .then(async () => {
+    logStep('acceptance verification completed');
+    await writeFinalReport();
+  })
+  .catch(async (error) => {
+    try {
+      await writeFinalReport(error);
+    } catch (reportError) {
+      process.stderr.write(
+        `\n[acceptance] report write failed: ${reportError instanceof Error ? reportError.stack || reportError.message : String(reportError)}\n`,
+      );
+    }
+
+    process.stderr.write(
+      `\n[acceptance] FAILED: ${error instanceof Error ? error.stack || error.message : String(error)}\n`,
+    );
+    process.exitCode = 1;
+  });

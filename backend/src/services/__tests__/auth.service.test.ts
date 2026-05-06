@@ -2,7 +2,7 @@ import { AuthService } from '../auth.service';
 import { prisma } from '../../utils/prisma.util';
 import { hashPassword, comparePassword } from '../../utils/password.util';
 import { generateToken } from '../../utils/jwt.util';
-import { generateRefreshToken, hashRefreshToken } from '../../utils/refresh-token.util';
+import * as refreshTokenUtil from '../../utils/refresh-token.util';
 import {
   BusinessException,
   UnauthorizedException,
@@ -33,21 +33,23 @@ jest.mock('../../utils/prisma.util', () => ({
 
 jest.mock('../../utils/password.util');
 jest.mock('../../utils/jwt.util');
-jest.mock(
-  '../../utils/refresh-token.util',
-  () => ({
-    generateRefreshToken: jest.fn(),
-    hashRefreshToken: jest.fn(),
-  }),
-  { virtual: true },
-);
 
 describe('AuthService', () => {
   let authService: AuthService;
+  let generateRefreshTokenMock: jest.SpiedFunction<typeof refreshTokenUtil.generateRefreshToken>;
+  let hashRefreshTokenMock: jest.SpiedFunction<typeof refreshTokenUtil.hashRefreshToken>;
 
   beforeEach(() => {
-    authService = new AuthService();
+    jest.useRealTimers();
     jest.clearAllMocks();
+    generateRefreshTokenMock = jest.spyOn(refreshTokenUtil, 'generateRefreshToken');
+    hashRefreshTokenMock = jest.spyOn(refreshTokenUtil, 'hashRefreshToken');
+    authService = new AuthService();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   describe('register', () => {
@@ -98,8 +100,8 @@ describe('AuthService', () => {
       (hashPassword as jest.Mock).mockResolvedValue('hashedpassword');
       (generateToken as jest.Mock).mockReturnValue('mock-jwt-token');
 
-      (generateRefreshToken as jest.Mock).mockReturnValue('mock-refresh-token');
-      (hashRefreshToken as jest.Mock).mockReturnValue('mock-refresh-token-hash');
+      generateRefreshTokenMock.mockReturnValue('mock-refresh-token');
+      hashRefreshTokenMock.mockReturnValue('mock-refresh-token-hash');
       (prisma.refreshSession.create as jest.Mock).mockResolvedValue({});
 
       const result = await authService.register(registerData, {
@@ -245,8 +247,8 @@ describe('AuthService', () => {
       (prisma.userProfile.findUnique as jest.Mock).mockResolvedValue(mockProfile);
       (generateToken as jest.Mock).mockReturnValue('mock-jwt-token');
 
-      (generateRefreshToken as jest.Mock).mockReturnValue('mock-refresh-token');
-      (hashRefreshToken as jest.Mock).mockReturnValue('mock-refresh-token-hash');
+      generateRefreshTokenMock.mockReturnValue('mock-refresh-token');
+      hashRefreshTokenMock.mockReturnValue('mock-refresh-token-hash');
       (prisma.refreshSession.create as jest.Mock).mockResolvedValue({});
 
       const result = await authService.login(
@@ -317,10 +319,10 @@ describe('AuthService', () => {
       const now = new Date('2026-04-02T00:00:00.000Z');
       jest.useFakeTimers().setSystemTime(now);
 
-      (hashRefreshToken as jest.Mock)
+      hashRefreshTokenMock
         .mockReturnValueOnce('current-refresh-hash')
         .mockReturnValueOnce('next-refresh-hash');
-      (generateRefreshToken as jest.Mock).mockReturnValue('next-refresh-token');
+      generateRefreshTokenMock.mockReturnValue('next-refresh-token');
       (generateToken as jest.Mock).mockReturnValue('next-access-token');
       (prisma.refreshSession.findUnique as jest.Mock).mockResolvedValue({
         id: BigInt(10),
@@ -371,7 +373,7 @@ describe('AuthService', () => {
     it('rejects refresh when the cookie token is missing or invalid', async () => {
       await expect(authService.refresh('')).rejects.toThrow(UnauthorizedException);
 
-      (hashRefreshToken as jest.Mock).mockReturnValue('missing-refresh-hash');
+      hashRefreshTokenMock.mockReturnValue('missing-refresh-hash');
       (prisma.refreshSession.findUnique as jest.Mock).mockResolvedValue(null);
 
       await expect(authService.refresh('missing-refresh-token')).rejects.toThrow(
@@ -380,7 +382,7 @@ describe('AuthService', () => {
     });
 
     it('revokes the current refresh session on logout', async () => {
-      (hashRefreshToken as jest.Mock).mockReturnValue('logout-refresh-hash');
+      hashRefreshTokenMock.mockReturnValue('logout-refresh-hash');
       (prisma.refreshSession.findUnique as jest.Mock).mockResolvedValue({
         id: BigInt(88),
         userId: BigInt(1),

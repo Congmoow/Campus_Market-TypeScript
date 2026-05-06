@@ -191,18 +191,18 @@ prisma db push --skip-generate
 docker compose exec backend npm exec --workspace campus-market-backend prisma migrate deploy --schema backend/prisma/schema.prisma
 ```
 
-### Docker Initialization Notes
+### Docker 初始化说明
 
-- Empty Docker PostgreSQL databases are now bootstrapped with `backend/prisma/bootstrap-current-schema.sql`.
-- After that bootstrap, backend marks the current legacy Prisma migration set as applied, then runs `prisma migrate deploy` again.
-- Default product categories are seeded automatically during backend startup, and the seed is idempotent.
-- The emergency fallback `prisma db push --skip-generate` is still available, but only as a last resort and is controlled by `PRISMA_ALLOW_DB_PUSH_FALLBACK`.
-- Local Docker over plain HTTP should keep `AUTH_COOKIE_SECURE=false`; production HTTPS should change it back to `true`.
+- 空的 Docker PostgreSQL 数据库会先通过 `backend/prisma/bootstrap-current-schema.sql` 完成基线初始化。
+- 基线初始化之后，backend 会先把当前遗留 Prisma migration 集标记为已应用，再重新执行一次 `prisma migrate deploy`。
+- 默认商品分类会在 backend 启动时自动补种，且该种子脚本是幂等的。
+- `prisma db push --skip-generate` 的应急兜底仍然保留，但只应作为最后手段，并由 `PRISMA_ALLOW_DB_PUSH_FALLBACK` 控制。
+- 本地 Docker 以纯 HTTP 运行时应保持 `AUTH_COOKIE_SECURE=false`；生产 HTTPS 环境需要改回 `true`。
 
-Current boundaries:
+当前边界：
 
-- The historical Prisma migration directories are still not a complete from-empty replay chain by themselves, so empty-database startup relies on the baseline bootstrap file plus migration metadata normalization.
-- If you change the Prisma schema in the future, update both `backend/prisma/bootstrap-current-schema.sql` and the legacy migration handling in `backend/src/scripts/docker-db-init.ts`.
+- 历史 Prisma migration 目录本身仍不是一条可以从空库完整重放的链路，因此空数据库启动仍依赖基线 SQL 文件和 migration 元数据归一化处理。
+- 如果后续修改 Prisma schema，需要同时更新 `backend/prisma/bootstrap-current-schema.sql` 以及 `backend/src/scripts/docker-db-init.ts` 中的遗留 migration 兼容逻辑。
 
 ### 访问地址
 
@@ -314,6 +314,161 @@ CI 会在 Ubuntu 环境中执行以下步骤：
 3. `npm run typecheck`
 4. `npm test`
 5. `npm run build`
+
+## 自动化测试实训验收说明
+
+本节用于说明当前仓库的自动化测试验收口径、触发方式、报告位置和人工配置边界。结论先行：当前仓库的自动化测试体系分为三层，分别是代码级单元/组件测试、服务端集成/契约测试、客户侧 Docker API 回归测试；三层已通过根目录脚本串联，并补充了 GitHub Actions 与 Gitee Go 仓库内流水线配置。Gitee 仓库创建、代码同步、保护分支和合并门禁仍需要在网页端手动配置。
+
+### 一、三层测试体系
+
+1. 代码级单元/组件测试
+   - 后端使用 Jest，主要覆盖 `backend/src/services/__tests__`、`backend/src/controllers/__tests__`、`backend/src/middlewares/__tests__`、`backend/src/config/__tests__` 等目录。
+   - 前端使用 Vitest + Testing Library，主要覆盖 `frontend/src/components/__tests__`、`frontend/src/pages/__tests__`、`frontend/src/lib/__tests__`、`frontend/src/api/__tests__` 等目录。
+   - 目标是尽早发现纯函数、服务逻辑、组件渲染和交互回归。
+
+2. 服务端集成/契约测试
+   - 后端使用 Jest 执行集成与接口契约校验，重点覆盖 `backend/src/__tests__/*.integration.test.ts` 以及路由层测试 `backend/src/routes/__tests__/*.test.ts`。
+   - 这层依赖可用的 PostgreSQL 测试库，并在执行前通过 `npm --workspace campus-market-backend run test:prepare-db` 将 schema 推到测试库。
+   - 目标是验证接口状态码、响应结构、鉴权、数据库读写和共享契约没有断裂。
+
+3. 客户侧 Docker API 回归测试
+   - 入口脚本是 `scripts/docker-acceptance.mjs`，根目录命令为 `npm run test:acceptance` 或 `npm run docker:acceptance`。
+   - 这层会通过 Docker Compose 拉起 `postgres + backend + frontend`，再从客户侧访问 `http://localhost` 和 `http://localhost:3000`，验证 `/api` 代理、鉴权、上传、商品、订单、容器重启后的数据持久化等关键链路。
+   - 目标是验证“容器化交付结果能否被实际客户端调用”，不是浏览器 UI 像素级测试。
+
+### 二、本地验收命令
+
+建议在仓库根目录按下面顺序执行：
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm --workspace campus-market-backend run test:prepare-db
+npm run test:code
+npm run build
+docker compose --env-file .env.docker.example up --build -d
+npm run test:acceptance
+docker compose --env-file .env.docker.example down -v --remove-orphans
+```
+
+按层执行时可使用以下命令：
+
+```bash
+# 代码级单元/组件
+npm run test:coverage:backend
+npm run test:coverage:frontend
+
+# 服务端集成/契约
+npm --workspace campus-market-backend run test:prepare-db
+npm --workspace campus-market-backend run test:ci
+
+# 客户侧 Docker API 回归
+npm run test:acceptance
+```
+
+说明：
+
+- `npm run test:code` 会依次调用 `test:acceptance-report`、`test:coverage:backend` 和 `test:coverage:frontend`。
+- `npm run test:acceptance-report` 会校验 Docker 验收报告 helper 的成功/失败路径，防止报告字段回归。
+- `npm --workspace campus-market-backend run test:ci` 同时包含后端覆盖率和 JUnit reporter，适合本地出报告和 CI 归档。
+- `npm --workspace campus-market-frontend run test:ci` 会使用 Vitest 生成前端覆盖率和 JUnit XML。
+- `npm run test:acceptance` 会生成结构化验收报告：`reports/acceptance-report.json` 和 `reports/acceptance-summary.md`。
+- 代码级覆盖率门禁采用核心文件集口径：后端覆盖认证、商品、校验、映射等核心模块；前端覆盖入口、商品卡片、分类和用户展示工具等关键模块。门禁阈值为语句/行/函数不低于 80%，分支不低于 70%。
+
+### 三、报告路径与验收产物
+
+1. 后端 Jest
+   - 覆盖率目录：`backend/coverage/`
+   - HTML 报告入口：`backend/coverage/index.html`
+   - LCOV 文件：`backend/coverage/lcov.info`
+   - Cobertura XML：`backend/coverage/cobertura-coverage.xml`
+   - JUnit XML：CI 中归档到 `reports/backend/junit.xml`
+
+2. 前端 Vitest
+   - 覆盖率目录：`frontend/coverage/`
+   - 常用入口：`frontend/coverage/index.html`、`frontend/coverage/lcov.info`
+   - Cobertura XML：`frontend/coverage/cobertura-coverage.xml`
+   - JUnit XML：`frontend/reports/frontend-junit.xml`
+
+3. Docker API 回归
+   - 结构化 JSON：`reports/acceptance-report.json`
+   - Markdown 摘要：`reports/acceptance-summary.md`
+   - CI 原始日志：`reports/acceptance/acceptance.log`
+   - Docker 诊断日志：`reports/docker-compose.log`、`reports/docker/compose.log`、`reports/docker/postgres.log`、`reports/docker/backend.log`、`reports/docker/frontend.log`
+
+### 四、CI / Gitee Go 触发说明
+
+当前已落地的代码仓内 CI 是 GitHub Actions：
+
+- 配置文件：`.github/workflows/ci.yml`
+- 已实现触发条件：`push` 到 `main`、`push` 到 `codex/**`、以及 `pull_request`
+- 已实现执行内容：
+  - `code-level-tests`：`npm ci`、`npm run lint`、`npm run typecheck`、`npm run test:code`、`npm run build`
+  - `customer-regression`：依赖 `code-level-tests` 成功后运行 Docker Compose 整栈回归，并上传 acceptance 与 Docker 日志制品
+
+仓库内已补充 Gitee Go 流水线配置：
+
+- `.workflow/quality-gate.yml`：执行代码级质量门禁
+- `.workflow/docker-regression.yml`：先执行代码级质量门禁，再执行 Docker 客户侧回归，保证客户侧回归建立在代码级测试成功之后
+
+两条 Gitee Go 流水线都会把 `./reports` 目录上传到制品库 `campus-market-test-reports`，因此需要先在 Gitee Go 网页端创建同名制品库，或把 YAML 中的 `artifactRepository` 改成课程仓库已有的制品库 ID。
+
+Gitee Go YAML 触发器主要支持 `push` 事件，仓库内配置已覆盖 `main` 与 `master`。流水线文件提交后，还需要在 Gitee 网页端启用流水线，并按课程要求确认以下事项：
+
+- `push` 到 `main`
+- 如课程答辩或联调分支不是 `main/master`，需要在 `.workflow/*.yml` 追加对应分支的 `push` 触发规则
+- Pull Request / 合并请求创建、更新时的合并门禁需要在 Gitee 保护分支和流水线状态检查中配置，仓内 YAML 不自动创建该网页端规则
+
+如果 Gitee Go 需要完整执行三层测试，建议流水线顺序与本地验收命令保持一致，并额外归档以下产物：
+
+- `reports/backend/**`
+- `reports/frontend/**`
+- `reports/acceptance/**`
+- `reports/docker/**`
+- `reports/docker-compose.log`
+- `reports/acceptance-report.json`
+- `reports/acceptance-summary.md`
+
+### 五、Gitee 仓库创建、同步与网页端人工配置
+
+以下事项当前都不是仓库内自动完成项，需要仓库管理员手动配置：
+
+1. Gitee 仓库创建
+   - 在 Gitee 网页端新建空仓库。
+   - 首次创建时不要额外初始化 README、`.gitignore` 或许可证，避免和现有仓库历史冲突。
+
+2. Gitee 远端同步
+   - 本地添加远端：`git remote add gitee <你的 Gitee 仓库地址>`
+   - 首次推送主分支：`git push gitee main`
+   - 如需同步标签：`git push gitee --tags`
+   - 后续由维护人按分支手动推送或在外部平台配置镜像同步；当前仓库没有内建自动镜像脚本
+
+3. 保护分支与合并门禁
+   - 需要在 Gitee 网页端手动开启 `main` 保护分支
+   - 需要手动限制直接推送，要求通过 Pull Request 合并
+   - 需要手动把 Gitee Go 流水线结果设置为合并前置条件
+   - 如课程组有要求，还需要手动配置最少评审人数、指定评审人或禁止带失败状态合并
+
+### 六、Docker runner 前提与已知边界
+
+运行 `npm run test:acceptance` 或在 Gitee Go 执行 Docker 回归前，需要满足以下前提：
+
+- runner 已安装 Docker Engine，且 `docker compose` 子命令可用
+- runner 允许启动容器、执行 `docker compose exec`、重启容器
+- runner 使用 Node.js 20 及以上，以支持脚本中使用的 `fetch`、`File`、`FormData`、`AbortSignal.timeout`
+- 运行机上的 `80`、`3000`、`5432` 端口未被其他服务占用
+- runner 可读取仓库根目录的 `.env.docker.example`
+- 若在 Gitee Go 上执行，优先使用自托管 Docker runner；没有 Docker daemon 的共享 runner 通常无法通过该层测试
+
+当前已知边界：
+
+- Docker API 回归覆盖的是 HTTP API 交付链路，不覆盖浏览器端视觉回归、DOM 交互细节或性能指标
+- 脚本依赖固定本地端口和默认 compose 工程名，不适合在同一台机器上并行跑多份相同流水线
+- 脚本会在测试库里创建测试账号、商品、订单和上传文件；如果不执行 `docker compose down -v`，这些数据会保留在测试卷中
+- 本地 Docker 验收依赖 `AUTH_COOKIE_SECURE=false` 的 HTTP 场景，不等价于生产 HTTPS 配置
+- 历史 Prisma migration 仍不是“从空库完整重放”的纯净链路，空库启动仍依赖 `backend/prisma/bootstrap-current-schema.sql` 和容器初始化脚本兜底
+- 当前 Docker 回归没有内建 XML/HTML 报告，仅能依赖退出码和日志作为验收证据
 
 ## 工程规范
 
