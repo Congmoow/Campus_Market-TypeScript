@@ -111,7 +111,12 @@ frontend/reports/
 
 # Local workspace metadata
 .codex/
-docs/
+docs/*
+!docs/*.md
+!docs/images/
+!docs/images/*.png
+!docs/images/*.jpg
+!docs/images/*.webp
 
 # JetBrains IDEs (WebStorm, IntelliJ, etc.)
 .idea/
