@@ -266,6 +266,7 @@ async function writeFinalReport(error = null) {
 
 async function main() {
   logStep('verify frontend/backend connectivity through nginx and backend');
+  // 测试用例：验证前端首页可以通过 nginx 正常访问。
   await runCheck('frontend home', async () => {
     const homeResponse = await fetch(`${frontendBaseUrl}`);
     assert(homeResponse.ok, `frontend home failed: ${homeResponse.status}`);
@@ -274,6 +275,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证后端健康检查接口正常返回。
   await runCheck('backend health', async () => {
     const backendHealth = await requestJson(`${backendBaseUrl}/health`);
     assert(backendHealth.response.ok, `backend health failed: ${backendHealth.response.status}`);
@@ -282,6 +284,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证前端 nginx 可以正确代理 /api 请求到后端。
   await runCheck('nginx /api proxy', async () => {
     const latestViaFrontend = await requestJson(`${frontendBaseUrl}/api/products/latest?limit=5`);
     assert(
@@ -294,6 +297,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证 Docker 初始化后分类列表已成功写入数据库。
   await runCheck('category list', async () => {
     const categoriesViaFrontend = await requestJson(`${frontendBaseUrl}/api/categories`);
     assert(
@@ -310,6 +314,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证 Prisma 迁移没有遗留未完成状态。
   await runCheck('prisma migration state', async () => {
     const unfinishedMigrationsBefore = Number(
       queryPostgresSingleValue(
@@ -325,6 +330,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：未登录访问受保护接口必须返回 401。
   await runCheck('protected endpoint guard', async () => {
     const unauthorizedMe = await requestJson(`${frontendBaseUrl}/api/auth/me`);
     assert(
@@ -336,6 +342,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：未认证创建商品必须被拒绝。
   await runCheck('unauthenticated create product blocked', async () => {
     const invalidProduct = await requestJson(`${frontendBaseUrl}/api/products`, {
       method: 'POST',
@@ -360,6 +367,7 @@ async function main() {
   });
 
   logStep('run negative regression cases for auth and query validation');
+  // 负向测试用例：未知账号登录必须返回 401。
   await runCheck('negative regression: unknown login rejected', async () => {
     const invalidLogin = await requestJson(`${frontendBaseUrl}/api/auth/login`, {
       method: 'POST',
@@ -378,6 +386,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：注册时使用非法手机号必须返回 400。
   await runCheck('negative regression: invalid register phone rejected', async () => {
     const invalidRegister = await requestJson(`${frontendBaseUrl}/api/auth/register`, {
       method: 'POST',
@@ -398,6 +407,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：没有 refresh cookie 刷新令牌必须返回 401。
   await runCheck('negative regression: refresh without cookie rejected', async () => {
     const refreshWithoutCookie = await requestJson(`${frontendBaseUrl}/api/auth/refresh`, {
       method: 'POST',
@@ -414,6 +424,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：商品分页参数非法必须返回 400。
   await runCheck('negative regression: invalid product page query rejected', async () => {
     const invalidProductPage = await requestJson(`${frontendBaseUrl}/api/products?page=-1&size=20`);
 
@@ -424,6 +435,7 @@ async function main() {
   });
 
   logStep('register seller and buyer, then verify login and refresh cookie');
+  // 测试用例：注册卖家账号并保存业务 ID。
   const seller = await runCheck('register seller', async () => {
     const registeredSeller = await registerUser('2026', 'Docker Seller');
     return {
@@ -436,6 +448,7 @@ async function main() {
     };
   });
 
+  // 测试用例：注册买家账号并保存业务 ID。
   const buyer = await runCheck('register buyer', async () => {
     const registeredBuyer = await registerUser('2025', 'Docker Buyer');
     return {
@@ -448,6 +461,7 @@ async function main() {
     };
   });
 
+  // 测试用例：卖家使用正确账号密码登录并获取令牌。
   const login = await runCheck('login', async () => {
     const loginResult = await loginUser(seller.studentId, seller.password);
     assert(loginResult.user.id === seller.user.id, 'login returned unexpected seller');
@@ -466,6 +480,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证登录后 refresh cookie 已存在且适用于本地 HTTP。
   await runCheck('refresh cookie', async () => ({
     detail: 'present and usable over local HTTP',
     businessIds: {
@@ -473,6 +488,7 @@ async function main() {
     },
   }));
 
+  // 测试用例：使用 JWT 访问当前用户接口并校验身份。
   await runCheck('JWT authenticated endpoint', async () => {
     const meWithJwt = await requestJson(`${frontendBaseUrl}/api/auth/me`, {
       headers: authHeaders(login.token),
@@ -488,6 +504,7 @@ async function main() {
     };
   });
 
+  // 测试用例：使用 refresh cookie 交换新的访问令牌。
   await runCheck('refresh token exchange', async () => {
     const refreshWithCookie = await requestJson(`${frontendBaseUrl}/api/auth/refresh`, {
       method: 'POST',
@@ -509,6 +526,7 @@ async function main() {
   });
 
   logStep('upload image and verify /uploads through nginx');
+  // 测试用例：卖家上传商品图片并获取上传结果。
   const uploadedImage = await runCheck('upload product image', async () => {
     const image = await uploadProductImage(seller.token);
     return {
@@ -520,6 +538,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证 nginx 可以代理访问已上传图片。
   await runCheck('nginx /uploads proxy', async () => {
     const uploadedViaFrontend = await fetch(`${frontendBaseUrl}${uploadedImage.url}`);
     assert(
@@ -534,6 +553,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证后端静态文件路由可以访问已上传图片。
   await runCheck('backend uploads static route', async () => {
     const uploadedViaBackend = await fetch(`${backendBaseUrl}${uploadedImage.url}`);
     assert(
@@ -548,6 +568,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证上传文件已写入后端容器挂载卷。
   await runCheck('upload volume file', async () => {
     const uploadCheck = runDockerCompose([
       'exec',
@@ -567,6 +588,7 @@ async function main() {
   });
 
   logStep('create, query, update, and re-query product');
+  // 测试用例：卖家创建商品并保存商品 ID。
   const createdProduct = await runCheck('create product', async () => {
     const createProduct = await requestJson(`${frontendBaseUrl}/api/products`, {
       method: 'POST',
@@ -591,6 +613,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证商品列表包含刚创建的商品。
   await runCheck('product list contains new product', async () => {
     const productList = await requestJson(
       `${frontendBaseUrl}/api/products?page=0&size=20&sort=latest`,
@@ -608,6 +631,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证商品详情接口返回刚创建的商品。
   await runCheck('product detail', async () => {
     const productDetail = await requestJson(`${frontendBaseUrl}/api/products/${createdProduct.id}`);
     assert(productDetail.response.ok, `product detail failed: ${productDetail.response.status}`);
@@ -623,6 +647,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：查询不存在的商品必须返回 404。
   await runCheck('negative regression: missing product detail returns 404', async () => {
     const missingProduct = await requestJson(`${frontendBaseUrl}/api/products/999999999`);
 
@@ -632,6 +657,7 @@ async function main() {
     };
   });
 
+  // 测试用例：卖家更新商品信息并校验更新结果。
   await runCheck('update product', async () => {
     const updateProduct = await requestJson(
       `${frontendBaseUrl}/api/products/${createdProduct.id}`,
@@ -660,6 +686,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：买家不能修改卖家的商品。
   await runCheck('negative regression: buyer cannot update seller product', async () => {
     const forbiddenUpdate = await requestJson(
       `${frontendBaseUrl}/api/products/${createdProduct.id}`,
@@ -686,6 +713,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：买家不能删除卖家的商品。
   await runCheck('negative regression: buyer cannot delete seller product', async () => {
     const forbiddenDelete = await requestJson(
       `${frontendBaseUrl}/api/products/${createdProduct.id}`,
@@ -705,6 +733,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证卖家我的商品列表包含刚创建的商品。
   await runCheck('seller my products', async () => {
     const myProducts = await requestJson(`${frontendBaseUrl}/api/products/my`, {
       headers: authHeaders(seller.token),
@@ -723,6 +752,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：已登录用户提交非法商品数据必须返回 400。
   await runCheck('validation error response', async () => {
     const invalidCreateWithToken = await requestJson(`${frontendBaseUrl}/api/products`, {
       method: 'POST',
@@ -748,6 +778,7 @@ async function main() {
   });
 
   logStep('create and complete the minimal order loop');
+  // 负向测试用例：创建订单时联系电话非法必须返回 400。
   await runCheck('negative regression: order invalid contact phone rejected', async () => {
     const invalidOrderPhone = await requestJson(`${frontendBaseUrl}/api/orders`, {
       method: 'POST',
@@ -771,6 +802,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：卖家不能购买自己发布的商品。
   await runCheck('negative regression: seller cannot buy own product', async () => {
     const selfOrder = await requestJson(`${frontendBaseUrl}/api/orders`, {
       method: 'POST',
@@ -794,6 +826,7 @@ async function main() {
     };
   });
 
+  // 测试用例：买家创建订单并保存订单 ID。
   const createdOrder = await runCheck('create order', async () => {
     const createOrder = await requestJson(`${frontendBaseUrl}/api/orders`, {
       method: 'POST',
@@ -818,6 +851,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证买家订单列表包含刚创建的订单。
   await runCheck('buyer order list', async () => {
     const buyerOrders = await requestJson(`${frontendBaseUrl}/api/orders/me`, {
       headers: authHeaders(buyer.token),
@@ -836,6 +870,7 @@ async function main() {
     };
   });
 
+  // 测试用例：验证卖家销售订单列表包含刚创建的订单。
   await runCheck('seller sales list', async () => {
     const sellerOrders = await requestJson(`${frontendBaseUrl}/api/orders/my/sales`, {
       headers: authHeaders(seller.token),
@@ -854,6 +889,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：买家不能对订单执行发货操作。
   await runCheck('negative regression: buyer cannot ship order', async () => {
     const forbiddenShip = await requestJson(
       `${frontendBaseUrl}/api/orders/${createdOrder.id}/ship`,
@@ -873,6 +909,7 @@ async function main() {
     };
   });
 
+  // 负向测试用例：卖家不能对订单执行完成操作。
   await runCheck('negative regression: seller cannot complete order', async () => {
     const forbiddenComplete = await requestJson(
       `${frontendBaseUrl}/api/orders/${createdOrder.id}/complete`,
@@ -892,6 +929,7 @@ async function main() {
     };
   });
 
+  // 测试用例：卖家发货后订单状态应变为 SHIPPED。
   await runCheck('ship order', async () => {
     const shipOrder = await requestJson(`${frontendBaseUrl}/api/orders/${createdOrder.id}/ship`, {
       method: 'POST',
@@ -907,6 +945,7 @@ async function main() {
     };
   });
 
+  // 测试用例：买家完成订单后订单状态应变为 COMPLETED。
   await runCheck('complete order', async () => {
     const completeOrder = await requestJson(
       `${frontendBaseUrl}/api/orders/${createdOrder.id}/complete`,
@@ -928,6 +967,7 @@ async function main() {
     };
   });
 
+  // 测试用例：查询订单详情并确认完成状态已持久化。
   await runCheck('order detail', async () => {
     const completedOrderDetail = await requestJson(
       `${frontendBaseUrl}/api/orders/${createdOrder.id}`,
@@ -951,6 +991,7 @@ async function main() {
     };
   });
 
+  // 测试用例：订单完成后商品状态应变为 SOLD。
   await runCheck('product sold state', async () => {
     const soldProductDetail = await requestJson(
       `${frontendBaseUrl}/api/products/${createdProduct.id}`,
@@ -973,6 +1014,7 @@ async function main() {
   });
 
   logStep('restart containers and verify persistence');
+  // 测试用例：重启数据库、后端和前端容器后服务应恢复可用。
   await runCheck('docker restart', async () => {
     runDockerCompose(['restart', 'postgres', 'backend', 'frontend']);
     await waitForServices();
@@ -981,6 +1023,7 @@ async function main() {
     };
   });
 
+  // 测试用例：重启后商品数据仍然存在。
   await runCheck('product persistence', async () => {
     const persistedProduct = await requestJson(
       `${frontendBaseUrl}/api/products/${createdProduct.id}`,
@@ -998,6 +1041,7 @@ async function main() {
     };
   });
 
+  // 测试用例：重启后订单完成状态仍然存在。
   await runCheck('order persistence', async () => {
     const persistedOrder = await requestJson(`${frontendBaseUrl}/api/orders/${createdOrder.id}`, {
       headers: authHeaders(buyer.token),
@@ -1012,6 +1056,7 @@ async function main() {
     };
   });
 
+  // 测试用例：重启后已上传图片仍可通过前端访问。
   await runCheck('upload persistence', async () => {
     const persistedUpload = await fetch(`${frontendBaseUrl}${uploadedImage.url}`);
     assert(persistedUpload.ok, `persisted upload failed: ${persistedUpload.status}`);
@@ -1023,6 +1068,7 @@ async function main() {
     };
   });
 
+  // 测试用例：重启后上传文件仍存在于后端挂载卷。
   await runCheck('upload volume persistence', async () => {
     const persistedUploadCheck = runDockerCompose([
       'exec',
@@ -1041,6 +1087,7 @@ async function main() {
     };
   });
 
+  // 测试用例：重启后 Prisma 迁移状态仍然没有未完成项。
   await runCheck('prisma migration persistence', async () => {
     const unfinishedMigrationsAfterRestart = Number(
       queryPostgresSingleValue(

@@ -1,0 +1,96 @@
+name: Auto Merge on CI Pass
+
+# 当 CI 流水线完成后自动触发
+on:
+  workflow_run:
+    workflows: ['CI']
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    # 只在 CI 成功且是 PR 触发时运行
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Auto merge PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // 获取 CI 成功的 PR
+            const pullRequests = ${{ toJSON(github.event.workflow_run.pull_requests) }};
+
+            if (!pullRequests || pullRequests.length === 0) {
+              console.log('No associated PR found');
+              return;
+            }
+
+            for (const pr of pullRequests) {
+              const prNumber = pr.number;
+
+              // 获取 PR 详情
+              const { data: prData } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+
+              // 跳过草稿 PR
+              if (prData.draft) {
+                console.log(`PR #${prNumber} is a draft, skipping`);
+                continue;
+              }
+
+              // 只处理目标为 main 的 PR
+              if (prData.base.ref !== 'main') {
+                console.log(`PR #${prNumber} targets ${prData.base.ref}, not main. Skipping`);
+                continue;
+              }
+
+              // 检查 PR 是否可合并
+              if (prData.mergeable_state !== 'clean' && prData.mergeable_state !== 'unstable') {
+                console.log(`PR #${prNumber} mergeable_state is ${prData.mergeable_state}, not ready`);
+                continue;
+              }
+
+              // 检查是否带有 auto-merge 标签（可选安全控制）
+              const hasAutoMergeLabel = prData.labels.some(
+                label => label.name === 'auto-merge'
+              );
+
+              // 如果没有 auto-merge 标签，跳过（更安全）
+              // 如果希望所有 PR 都自动合并，注释掉这个检查
+              if (!hasAutoMergeLabel) {
+                console.log(`PR #${prNumber} does not have 'auto-merge' label, skipping`);
+                continue;
+              }
+
+              try {
+                // 尝试合并
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  merge_method: 'squash',
+                });
+                console.log(`PR #${prNumber} merged successfully`);
+
+                // 移除 auto-merge 标签
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  name: 'auto-merge',
+                }).catch(() => {});
+
+              } catch (error) {
+                console.log(`Failed to merge PR #${prNumber}: ${error.message}`);
+              }
+            }
