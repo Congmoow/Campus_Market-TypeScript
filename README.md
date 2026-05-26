@@ -349,4 +349,7 @@ Built a campus second-hand trading platform on a TypeScript Monorepo, implementi
 
 ## License
 
-This project is for learning and portfolio demonstration purposes.
+Copyright (c) 2026 **WangZhongWu**
+
+This project is licensed for **learning and portfolio demonstration purposes only**.
+See the [LICENSE](./LICENSE) file for full terms.

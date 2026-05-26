@@ -350,4 +350,7 @@ npm run test:acceptance  # Docker API 端到端回归
 
 ## License
 
-This project is for learning and portfolio demonstration purposes.
+Copyright (c) 2026 **WangZhongWu**
+
+本项目仅供**个人学习与作品集展示**使用。
+完整许可条款见 [LICENSE](./LICENSE) 文件。
